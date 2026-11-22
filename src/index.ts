@@ -1,6 +1,7 @@
 import { runBackfill } from "./backfill";
 import { purgeItems, runCollect } from "./collect";
 import { fillMissingContent, fillMissingSummaries, parseBatchLimit, parseReindexLimit, reindexContentText } from "./fulltext";
+import { iconResponse } from "./icons";
 import { countItems, countSearch, getItem, listClassics, listItems, normalizePage, PAGE_SIZE, parsePage, recentItems, searchItems } from "./queries";
 import { SEARCH_PAGE_SIZE, normalizeSearchQuery } from "./search";
 import { topicById } from "./score";
@@ -126,6 +127,9 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     if (request.method !== "GET" && request.method !== "HEAD") {
       return json({ error: "method not allowed" }, 405);
     }
+
+    const icon = iconResponse(url.pathname);
+    if (icon) return icon;
 
     if (url.pathname === "/health") {
       return json({ ok: true, name: "nomad-blog" });

@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "wrangler dev --ip 0.0.0.0 --port 4391 --local",
+    "icons": "node scripts/render-icons.mjs",
     "build": "wrangler deploy --dry-run --outdir dist && node scripts/finalize-bundle.mjs",
     "test": "vitest run",
     "check": "tsc --noEmit",
@@ -14,6 +15,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261119.1",
+    "@resvg/resvg-js": "^2.6.2",
     "typescript": "^5.7.2",
     "vitest": "^3.2.4",
     "wrangler": "4.166.0"

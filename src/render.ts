@@ -7,12 +7,6 @@ import { knownTag, parseTags, TAGS } from "./tags";
 import { esc, rfc822, safeHref, shanghaiDayKey, shanghaiLabel, xmlEsc } from "./text";
 import type { ItemRow } from "./types";
 
-const FAVICON =
-  "data:image/svg+xml," +
-  encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#0c5f57"/><path d="M16 5.5 19.2 14.6 16 26.5 12.8 14.6Z" fill="#f4efe4"/><circle cx="16" cy="16" r="1.7" fill="#8d2e28"/></svg>`,
-  );
-
 export interface HomeView {
   items: ItemRow[];
   classics: ItemRow[];
@@ -92,10 +86,17 @@ function layout(options: {
   body: string;
   origin: string;
   query?: string;
+  shareTitle?: string;
+  shareDescription?: string;
+  shareType?: "website" | "article";
 }): string {
   const onHome = !options.query && (options.path === "/" || options.path.startsWith("/?"));
   const fullTitle = onHome ? "游牧手记" : `${options.title} · 游牧手记`;
   const canonical = `${options.origin}${options.path === "/" ? "/" : options.path}`;
+  const shareTitle = options.shareTitle ?? fullTitle;
+  const shareDescription = options.shareDescription ?? options.description;
+  const shareType = options.shareType ?? "website";
+  const image = `${options.origin}/og.png`;
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -105,13 +106,24 @@ function layout(options: {
 <meta name="description" content="${esc(options.description)}">
 <link rel="canonical" href="${esc(canonical)}">
 <link rel="alternate" type="application/rss+xml" title="游牧手记" href="/rss.xml">
-<link rel="icon" href="${FAVICON}">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#0c5f57">
-<meta property="og:title" content="${esc(fullTitle)}">
-<meta property="og:description" content="${esc(options.description)}">
+<meta property="og:title" content="${esc(shareTitle)}">
+<meta property="og:description" content="${esc(shareDescription)}">
+<meta property="og:image" content="${esc(image)}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="游牧手记">
 <meta property="og:url" content="${esc(canonical)}">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:type" content="website">
+<meta property="og:type" content="${shareType}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(shareTitle)}">
+<meta name="twitter:description" content="${esc(shareDescription)}">
+<meta name="twitter:image" content="${esc(image)}">
 <style>${CSS}</style>
 </head>
 <body>
@@ -360,6 +372,9 @@ export function renderItem(item: ItemRow, origin: string): string {
     path: `/a/${item.id}`,
     body,
     origin,
+    shareTitle: item.title,
+    shareDescription: item.ai_summary || item.excerpt || "",
+    shareType: "article",
   });
 }
 
