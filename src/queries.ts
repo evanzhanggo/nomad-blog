@@ -99,9 +99,9 @@ export async function listClassics(db: D1Database, topic: string): Promise<ItemR
        FROM items
        WHERE section = 'classic' AND (? = '' OR topic = ?)
        ORDER BY quality_score DESC, id DESC
-       LIMIT 24`,
+       LIMIT ?`,
     )
-    .bind(topic, topic)
+    .bind(topic, topic, topic ? 12 : 6)
     .all<ItemRow>();
   return rows.results ?? [];
 }

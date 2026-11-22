@@ -1032,8 +1032,8 @@ async function listClassics(db, topic) {
        FROM items
        WHERE section = 'classic' AND (? = '' OR topic = ?)
        ORDER BY quality_score DESC, id DESC
-       LIMIT 24`
-  ).bind(topic, topic).all();
+       LIMIT ?`
+  ).bind(topic, topic, topic ? 12 : 6).all();
   return rows.results ?? [];
 }
 __name(listClassics, "listClassics");
