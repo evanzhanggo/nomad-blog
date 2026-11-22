@@ -79,6 +79,9 @@ describe("pages", () => {
     expect(about).toContain("Workers AI");
     expect(about).toContain("电鸭社区");
     expect(about).toContain("数字游民部落");
+    expect(about).toContain("何居上");
+    expect(about).toContain("https://x.com/hejushang8");
+    expect(about).toContain("每个账号每次最多两条");
     expect(about).not.toContain("Hacker News");
     expect(about).toContain("著作权归原作者所有");
 

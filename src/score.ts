@@ -7,12 +7,17 @@ export interface TopicDef {
   patterns: Array<{ re: RegExp; weight: number; primary?: boolean }>;
 }
 
+/**
+ * 美卡、英卡、PayPal、IBAN、红包卡、Google AI 的权重停在 22。
+ * 只出现在标题里还到不了 40 分，短帖不会因为这些词被放进来。
+ */
 export const TOPICS: TopicDef[] = [
   {
     id: "bank",
     label: "海外开卡",
     patterns: [
       { re: /港卡|香港银行|香港银行卡|汇丰|中银香港|众安银行|蚂蚁银行|天星银行|虚拟银行|银行卡开户/i, weight: 28, primary: true },
+      { re: /美卡|英卡|PayPal|IBAN/i, weight: 22, primary: true },
       { re: /开户|U\s*卡|虚拟卡|\bWise\b|万里汇|收款账户/i, weight: 14 },
     ],
   },
@@ -21,6 +26,7 @@ export const TOPICS: TopicDef[] = [
     label: "海外手机卡",
     patterns: [
       { re: /紫卡|giffgaff|保号|eSIM|香港手机号|电话卡|手机卡|Club\s*SIM|英国号|香港号/i, weight: 28, primary: true },
+      { re: /红包卡|Red\s*Pocket|Google\s*Fi/i, weight: 22, primary: true },
       { re: /验证码|漫游|实名/i, weight: 8 },
     ],
   },
@@ -37,6 +43,7 @@ export const TOPICS: TopicDef[] = [
     label: "海外 AI 订阅",
     patterns: [
       { re: /ChatGPT|Claude|OpenAI|Apple\s*ID|美区|外区|Gemini/i, weight: 26, primary: true },
+      { re: /Google\s*AI|谷歌\s*AI/i, weight: 22, primary: true },
       { re: /订阅|Plus|礼品卡|虚拟卡/i, weight: 10 },
     ],
   },

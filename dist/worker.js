@@ -252,6 +252,13 @@ async function fetchText(url, timeoutMs = 12e3) {
   return new TextDecoder("utf-8").decode(buffer);
 }
 __name(fetchText, "fetchText");
+async function fetchJson(url, timeoutMs = 12e3) {
+  const text = await fetchText(url, timeoutMs);
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith("<")) throw new Error("expected JSON, got HTML");
+  return JSON.parse(text);
+}
+__name(fetchJson, "fetchJson");
 
 // src/content.ts
 var CONTENT_MAX_BYTES = 2e5;
@@ -549,6 +556,7 @@ var TOPICS = [
     label: "\u6D77\u5916\u5F00\u5361",
     patterns: [
       { re: /港卡|香港银行|香港银行卡|汇丰|中银香港|众安银行|蚂蚁银行|天星银行|虚拟银行|银行卡开户/i, weight: 28, primary: true },
+      { re: /美卡|英卡|PayPal|IBAN/i, weight: 22, primary: true },
       { re: /开户|U\s*卡|虚拟卡|\bWise\b|万里汇|收款账户/i, weight: 14 }
     ]
   },
@@ -557,6 +565,7 @@ var TOPICS = [
     label: "\u6D77\u5916\u624B\u673A\u5361",
     patterns: [
       { re: /紫卡|giffgaff|保号|eSIM|香港手机号|电话卡|手机卡|Club\s*SIM|英国号|香港号/i, weight: 28, primary: true },
+      { re: /红包卡|Red\s*Pocket|Google\s*Fi/i, weight: 22, primary: true },
       { re: /验证码|漫游|实名/i, weight: 8 }
     ]
   },
@@ -573,6 +582,7 @@ var TOPICS = [
     label: "\u6D77\u5916 AI \u8BA2\u9605",
     patterns: [
       { re: /ChatGPT|Claude|OpenAI|Apple\s*ID|美区|外区|Gemini/i, weight: 26, primary: true },
+      { re: /Google\s*AI|谷歌\s*AI/i, weight: 22, primary: true },
       { re: /订阅|Plus|礼品卡|虚拟卡/i, weight: 10 }
     ]
   },
@@ -1200,6 +1210,683 @@ function dedupeDrafts(items) {
 }
 __name(dedupeDrafts, "dedupeDrafts");
 
+// src/x.ts
+var FX_API = "https://api.fxtwitter.com";
+var ARTICLE_MIN = 180;
+var LONG_POST_MIN = 360;
+var HYDRATE_MAX = 4;
+var PROMO = /拉群|进群|加群|交流群|邀请码|速度冲|手慢无|速度薅|速速来撸|群满/;
+var THREAD_HINT = /教程|指南|攻略|步骤|流程|如下|长文/;
+var X_ACCOUNTS = [
+  { id: "hejushang8", name: "\u4F55\u5C45\u4E0A", handle: "hejushang8", userId: "1794938417656299521", perRun: 2 },
+  { id: "vansvoler", name: "\u6D77\u65E0\u65B9", handle: "vansvoler", userId: "1584880501", perRun: 2 },
+  { id: "niaoshu", name: "\u9E1F\u53D4\u672C\u9E1F", handle: "niaoshu", userId: "333823770", perRun: 2 },
+  { id: "donniy520", name: "\u4E1C\u9006", handle: "donniy520", userId: "2037918020807647232", perRun: 2 }
+];
+function charCount(text) {
+  return Array.from(text).length;
+}
+__name(charCount, "charCount");
+function sameHandle(a, b) {
+  return a.replace(/^@/, "").toLowerCase() === b.replace(/^@/, "").toLowerCase();
+}
+__name(sameHandle, "sameHandle");
+function httpUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+__name(httpUrl, "httpUrl");
+function xStatusUrl(handle2, id, raw) {
+  const match = raw?.match(/https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/([^/?#\s]+)\/status\/(\d+)/i);
+  const who = (match?.[1] && match[1].toLowerCase() !== "i" ? match[1] : handle2).toLowerCase();
+  const status = match?.[2] || id;
+  return `https://x.com/${who}/status/${status}`;
+}
+__name(xStatusUrl, "xStatusUrl");
+function asRecord(value) {
+  return value && typeof value === "object" ? value : null;
+}
+__name(asRecord, "asRecord");
+function asString(value) {
+  return typeof value === "string" ? value : "";
+}
+__name(asString, "asString");
+function asNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+__name(asNumber, "asNumber");
+function timeValue(post) {
+  if (typeof post.createdAt === "number" && Number.isFinite(post.createdAt)) {
+    return post.createdAt < 1e12 ? post.createdAt * 1e3 : post.createdAt;
+  }
+  const parsed = Date.parse(String(post.createdAt ?? ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+__name(timeValue, "timeValue");
+function newest(a, b) {
+  return timeValue(b) - timeValue(a) || b.id.localeCompare(a.id);
+}
+__name(newest, "newest");
+function titleFromText(text) {
+  const line = text.split(/\n+/).map((part) => part.trim()).find((part) => part && !/^https?:\/\//i.test(part)) ?? "";
+  const compact = line.replace(/\s+/g, " ").trim();
+  const chars = Array.from(compact);
+  if (chars.length <= 42) return compact;
+  const head = chars.slice(0, 42).join("");
+  const cut = head.search(/[。！？!?；;]/);
+  return cut >= 8 ? head.slice(0, cut) : head;
+}
+__name(titleFromText, "titleFromText");
+function parseEntities(raw) {
+  const entries = [];
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      const record = asRecord(entry);
+      const value = asRecord(record?.value);
+      if (!record || record.key == null || !value) continue;
+      entries.push({ key: String(record.key), value });
+    }
+  } else if (asRecord(raw)) {
+    for (const [key, value] of Object.entries(raw)) {
+      const record = asRecord(value);
+      if (record) entries.push({ key, value: record });
+    }
+  }
+  return entries.map(({ key, value }) => {
+    const data = asRecord(value.data) ?? {};
+    const media = Array.isArray(data.mediaItems) ? asRecord(data.mediaItems[0]) : null;
+    return {
+      key,
+      type: asString(value.type),
+      url: httpUrl(data.url) ?? void 0,
+      mediaId: media?.mediaId != null ? String(media.mediaId) : void 0,
+      tweetId: data.tweetId != null ? String(data.tweetId) : void 0
+    };
+  });
+}
+__name(parseEntities, "parseEntities");
+function parseBlocks(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry) => {
+    const block = asRecord(entry) ?? {};
+    const styles = Array.isArray(block.inlineStyleRanges) ? block.inlineStyleRanges.map((style) => {
+      const record = asRecord(style) ?? {};
+      return {
+        offset: asNumber(record.offset),
+        length: asNumber(record.length),
+        style: asString(record.style)
+      };
+    }) : [];
+    const entities = Array.isArray(block.entityRanges) ? block.entityRanges.map((range) => {
+      const record = asRecord(range) ?? {};
+      return {
+        key: record.key == null ? "" : String(record.key),
+        offset: asNumber(record.offset),
+        length: asNumber(record.length)
+      };
+    }) : [];
+    return {
+      type: asString(block.type) || "unstyled",
+      text: asString(block.text),
+      styles,
+      entities
+    };
+  });
+}
+__name(parseBlocks, "parseBlocks");
+function parseImages(raw) {
+  const images = {};
+  if (!Array.isArray(raw)) return images;
+  for (const entry of raw) {
+    const record = asRecord(entry);
+    const info = asRecord(record?.media_info);
+    const url = httpUrl(info?.original_img_url);
+    if (record?.media_id == null || !url) continue;
+    images[String(record.media_id)] = url;
+  }
+  return images;
+}
+__name(parseImages, "parseImages");
+function parseArticle(raw) {
+  const article = asRecord(raw);
+  if (!article) return null;
+  const title = asString(article.title).trim();
+  if (!title) return null;
+  const content = asRecord(article.content);
+  return {
+    title,
+    preview: asString(article.preview_text).trim(),
+    blocks: parseBlocks(content?.blocks),
+    entities: parseEntities(content?.entityMap),
+    images: parseImages(article.media_entities)
+  };
+}
+__name(parseArticle, "parseArticle");
+function parseFxStatus(raw) {
+  const status = asRecord(raw);
+  if (!status || status.id == null) return null;
+  if (status.type && status.type !== "status") return null;
+  const author = asRecord(status.author) ?? {};
+  const reply = asRecord(status.replying_to);
+  const handle2 = asString(author.screen_name);
+  const id = String(status.id);
+  return {
+    id,
+    url: xStatusUrl(handle2 || "i", id, asString(status.url)),
+    text: asString(status.text).trim(),
+    createdAt: typeof status.created_timestamp === "number" ? status.created_timestamp : asString(status.created_at) || null,
+    authorName: asString(author.name).trim(),
+    authorHandle: handle2,
+    authorId: author.id == null ? "" : String(author.id),
+    likes: asNumber(status.likes),
+    replies: asNumber(status.replies),
+    reposted: status.reposted_by != null,
+    replyToHandle: reply ? asString(reply.screen_name) || null : null,
+    replyToStatus: reply?.status == null ? null : String(reply.status),
+    article: parseArticle(status.article)
+  };
+}
+__name(parseFxStatus, "parseFxStatus");
+function postsFromFxPayload(payload) {
+  const body = asRecord(payload);
+  if (!body) return [];
+  const list = [];
+  if (Array.isArray(body.results)) list.push(...body.results);
+  else if (body.status) list.push(body.status);
+  if (Array.isArray(body.thread)) list.push(...body.thread);
+  return list.map(parseFxStatus).filter((post) => post != null);
+}
+__name(postsFromFxPayload, "postsFromFxPayload");
+function stripQuotes(html2) {
+  return html2.replace(/<blockquote\b[\s\S]*?<\/blockquote>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+__name(stripQuotes, "stripQuotes");
+function postsFromFixupRss(xml, account) {
+  const source = xml.replace(/^\uFEFF/, "");
+  const items = [...source.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)];
+  const posts = [];
+  for (const match of items) {
+    const block = match[1] ?? "";
+    const link = block.match(/<link>([^<]*)<\/link>/i)?.[1]?.trim() ?? "";
+    const id = link.match(/status\/(\d+)/)?.[1] ?? "";
+    if (!id) continue;
+    const title = block.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? "";
+    const description = block.match(/<description>([\s\S]*?)<\/description>/i)?.[1] ?? "";
+    const html2 = description.replace(/^<!\[CDATA\[/, "").replace(/\]\]>$/, "");
+    const own = stripQuotes(html2);
+    const text = (own || title).replace(/\s+/g, " ").trim();
+    if (/^RT\s+@/i.test(text)) continue;
+    const published = block.match(/<pubDate>([^<]*)<\/pubDate>/i)?.[1]?.trim() ?? null;
+    posts.push({
+      id,
+      url: xStatusUrl(account.handle, id, link),
+      text,
+      createdAt: published,
+      authorName: account.name,
+      authorHandle: account.handle,
+      authorId: "",
+      likes: 0,
+      replies: 0,
+      reposted: false,
+      replyToHandle: null,
+      replyToStatus: null,
+      article: null
+    });
+  }
+  return posts;
+}
+__name(postsFromFixupRss, "postsFromFixupRss");
+function postsFromSyndication(html2, account) {
+  const match = html2.match(/<script id=(?:"__NEXT_DATA__"|'__NEXT_DATA__')[^>]*>([\s\S]*?)<\/script>/);
+  if (!match?.[1]) return [];
+  let data;
+  try {
+    data = JSON.parse(match[1]);
+  } catch {
+    return [];
+  }
+  const page = asRecord(asRecord(asRecord(data)?.props)?.pageProps);
+  const entries = asRecord(page?.timeline)?.entries;
+  if (!Array.isArray(entries)) return [];
+  const posts = [];
+  for (const entry of entries) {
+    const tweet = asRecord(asRecord(asRecord(entry)?.content)?.tweet);
+    if (!tweet) continue;
+    const user = asRecord(tweet.user) ?? {};
+    const id = asString(tweet.id_str) || (tweet.id == null ? "" : String(tweet.id));
+    if (!id) continue;
+    const handle2 = asString(user.screen_name);
+    const full = asString(tweet.full_text).trim() || asString(tweet.text).trim();
+    if (!full || /^RT\s+@/i.test(full) || tweet.retweeted_status) continue;
+    if (handle2 && !sameHandle(handle2, account.handle)) continue;
+    const replyHandle = asString(tweet.in_reply_to_screen_name);
+    posts.push({
+      id,
+      url: xStatusUrl(account.handle, id, asString(tweet.permalink)),
+      text: full,
+      createdAt: asString(tweet.created_at) || null,
+      authorName: asString(user.name).trim() || account.name,
+      authorHandle: handle2 || account.handle,
+      authorId: asString(user.id_str),
+      likes: asNumber(tweet.favorite_count),
+      replies: asNumber(tweet.reply_count),
+      reposted: false,
+      replyToHandle: replyHandle || null,
+      replyToStatus: asString(tweet.in_reply_to_status_id_str) || null,
+      article: null
+    });
+  }
+  return posts;
+}
+__name(postsFromSyndication, "postsFromSyndication");
+function articlePlain(post) {
+  const article = post.article;
+  if (!article) return "";
+  const fromBlocks = article.blocks.map((block) => block.text.trim()).filter(Boolean).join("\n");
+  return fromBlocks || article.preview;
+}
+__name(articlePlain, "articlePlain");
+function hasArticleBody(post) {
+  return post.article?.blocks.some((block) => block.text.trim() || block.type === "atomic") ?? false;
+}
+__name(hasArticleBody, "hasArticleBody");
+function dedupePosts(posts) {
+  const byId = /* @__PURE__ */ new Map();
+  for (const post of posts) {
+    const current = byId.get(post.id);
+    if (!current || articlePlain(post).length > articlePlain(current).length) byId.set(post.id, post);
+  }
+  return [...byId.values()];
+}
+__name(dedupePosts, "dedupePosts");
+function postsByOwner(posts, account) {
+  const ids = new Set(posts.map((post) => post.authorId).filter(Boolean));
+  if (ids.size && !ids.has(account.userId)) {
+    throw new Error(`user id mismatch for @${account.handle}: expected ${account.userId}`);
+  }
+  return posts.filter((post) => !post.authorId || post.authorId === account.userId);
+}
+__name(postsByOwner, "postsByOwner");
+function isRoot(post) {
+  if (post.reposted) return false;
+  if (!post.replyToHandle) return true;
+  return false;
+}
+__name(isRoot, "isRoot");
+function promoLead(title, plain) {
+  return PROMO.test(`${title}
+${plain}`.slice(0, 160));
+}
+__name(promoLead, "promoLead");
+function keepReply(post) {
+  const text = post.text.trim();
+  if (charCount(text) < 40) return false;
+  if (promoLead(titleFromText(text), text) && charCount(text) < 180) return false;
+  return true;
+}
+__name(keepReply, "keepReply");
+function threadParts(root, posts) {
+  const children = /* @__PURE__ */ new Map();
+  for (const post of posts) {
+    if (!post.replyToStatus || post.reposted) continue;
+    if (!sameHandle(post.authorHandle, root.authorHandle)) continue;
+    const list = children.get(post.replyToStatus) ?? [];
+    list.push(post);
+    children.set(post.replyToStatus, list);
+  }
+  const ordered = [root];
+  const queue = [root.id];
+  const seen = /* @__PURE__ */ new Set([root.id]);
+  while (queue.length) {
+    const id = queue.shift();
+    if (!id) break;
+    const next = (children.get(id) ?? []).sort((a, b) => timeValue(a) - timeValue(b));
+    for (const child of next) {
+      if (seen.has(child.id)) continue;
+      seen.add(child.id);
+      if (keepReply(child)) ordered.push(child);
+      queue.push(child.id);
+    }
+  }
+  return ordered;
+}
+__name(threadParts, "threadParts");
+function renderInline(text, block, entities) {
+  const ranges = [];
+  for (const style of block.styles) {
+    const open = style.style === "Bold" ? "<strong>" : style.style === "Italic" ? "<em>" : "";
+    const close = style.style === "Bold" ? "</strong>" : style.style === "Italic" ? "</em>" : "";
+    if (!open) continue;
+    ranges.push({ start: style.offset, end: style.offset + style.length, open, close, rank: style.style === "Bold" ? 1 : 2 });
+  }
+  for (const range of block.entities) {
+    const entity = entities.get(range.key);
+    if (entity?.type !== "LINK" || !entity.url) continue;
+    ranges.push({
+      start: range.offset,
+      end: range.offset + range.length,
+      open: `<a href="${entity.url}">`,
+      close: "</a>",
+      rank: 0
+    });
+  }
+  if (!ranges.length) return text;
+  const points = /* @__PURE__ */ new Set([0, text.length]);
+  for (const range of ranges) {
+    points.add(Math.max(0, Math.min(text.length, range.start)));
+    points.add(Math.max(0, Math.min(text.length, range.end)));
+  }
+  const cuts = [...points].sort((a, b) => a - b);
+  let html2 = "";
+  for (let index = 0; index < cuts.length - 1; index += 1) {
+    const start = cuts[index] ?? 0;
+    const end = cuts[index + 1] ?? start;
+    const slice = text.slice(start, end);
+    if (!slice) continue;
+    const active = ranges.filter((range) => range.start <= start && range.end >= end).sort((a, b) => a.rank - b.rank);
+    html2 += `${active.map((range) => range.open).join("")}${slice}${active.slice().reverse().map((range) => range.close).join("")}`;
+  }
+  return html2;
+}
+__name(renderInline, "renderInline");
+function renderAtomic(block, entities, images) {
+  const key = block.entities[0]?.key ?? "";
+  const entity = entities.get(key);
+  if (entity?.type === "MEDIA" && entity.mediaId && images[entity.mediaId]) {
+    return `<p><img src="${images[entity.mediaId]}" alt=""></p>`;
+  }
+  if (entity?.type === "TWEET" && entity.tweetId && /^\d+$/.test(entity.tweetId)) {
+    return `<p><a href="https://x.com/i/status/${entity.tweetId}">\u67E5\u770B\u5D4C\u5165\u7684\u5E16\u5B50</a></p>`;
+  }
+  return "";
+}
+__name(renderAtomic, "renderAtomic");
+function blocksToHtml(article) {
+  const entities = new Map(article.entities.map((entity) => [entity.key, entity]));
+  const parts = [];
+  let list = null;
+  const flush = /* @__PURE__ */ __name(() => {
+    if (!list?.items.length) {
+      list = null;
+      return;
+    }
+    parts.push(`<${list.type}>${list.items.join("")}</${list.type}>`);
+    list = null;
+  }, "flush");
+  const heading = {
+    "header-one": "h2",
+    "header-two": "h2",
+    "header-three": "h3",
+    "header-four": "h4"
+  };
+  for (const block of article.blocks) {
+    if (block.type === "unordered-list-item" || block.type === "ordered-list-item") {
+      const type = block.type === "ordered-list-item" ? "ol" : "ul";
+      if (!list || list.type !== type) {
+        flush();
+        list = { type, items: [] };
+      }
+      const item = renderInline(block.text, block, entities).trim();
+      if (item) list.items.push(`<li>${item}</li>`);
+      continue;
+    }
+    flush();
+    if (block.type === "atomic") {
+      const html2 = renderAtomic(block, entities, article.images);
+      if (html2) parts.push(html2);
+      continue;
+    }
+    const inner2 = renderInline(block.text, block, entities).trim();
+    if (!inner2) continue;
+    if (block.type === "code-block") {
+      parts.push(`<pre><code>${inner2}</code></pre>`);
+      continue;
+    }
+    const tag = heading[block.type] || (block.type === "blockquote" ? "blockquote" : "p");
+    parts.push(`<${tag}>${inner2}</${tag}>`);
+  }
+  flush();
+  return parts.join("");
+}
+__name(blocksToHtml, "blocksToHtml");
+function paragraphsHtml(text) {
+  return text.split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => `<p>${line}</p>`).join("");
+}
+__name(paragraphsHtml, "paragraphsHtml");
+function attribution(name, url) {
+  return `<p>\u539F\u6587\uFF1A<a href="${url}">${name}\u5728 X \u53D1\u5E03\u7684\u5E16\u5B50</a></p>`;
+}
+__name(attribution, "attribution");
+function pieceFrom(root, posts, account) {
+  const author = root.authorName && !root.authorName.includes("@") ? root.authorName : account.name;
+  if (root.article) {
+    const plain2 = articlePlain(root);
+    const title2 = root.article.title.trim();
+    if (promoLead(title2, plain2)) return null;
+    const ready = hasArticleBody(root) || charCount(root.article.preview) >= ARTICLE_MIN;
+    if (!ready || charCount(plain2) < ARTICLE_MIN) return null;
+    const body = hasArticleBody(root) ? blocksToHtml(root.article) : paragraphsHtml(plain2);
+    if (!body) return null;
+    return {
+      id: root.id,
+      url: root.url,
+      title: title2,
+      author,
+      createdAt: root.createdAt,
+      likes: root.likes,
+      plain: plain2,
+      html: `${body}${attribution(author, root.url)}`
+    };
+  }
+  const title = titleFromText(root.text);
+  if (!title || promoLead(title, root.text)) return null;
+  const parts = threadParts(root, posts);
+  const plain = parts.map((part) => part.text.trim()).filter(Boolean).join("\n\n");
+  const substantive = parts.filter((part) => charCount(part.text) >= 40);
+  const long = charCount(plain) >= LONG_POST_MIN && (charCount(root.text) >= LONG_POST_MIN || substantive.length >= 2);
+  if (!long) return null;
+  return {
+    id: root.id,
+    url: root.url,
+    title,
+    author,
+    createdAt: root.createdAt,
+    likes: root.likes,
+    plain,
+    html: `${parts.map((part) => paragraphsHtml(part.text)).join("")}${attribution(author, root.url)}`
+  };
+}
+__name(pieceFrom, "pieceFrom");
+function qualifyXPosts(posts, account) {
+  const pool = dedupePosts(posts).filter(
+    (post) => !post.authorHandle || sameHandle(post.authorHandle, account.handle)
+  );
+  const roots = pool.filter(isRoot).sort(newest);
+  const drafts = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const root of roots) {
+    if (drafts.length >= account.perRun) break;
+    const piece = pieceFrom(root, pool, account);
+    if (!piece || seen.has(piece.url)) continue;
+    const draft = buildDraft({
+      url: piece.url,
+      title: piece.title,
+      excerpt: piece.plain,
+      sourceId: account.id,
+      sourceName: account.name,
+      author: piece.author,
+      publishedAt: piece.createdAt,
+      popularity: piece.likes,
+      popularityLabel: piece.likes ? "\u8D5E" : "",
+      contentHtml: piece.html
+    });
+    if (!draft) continue;
+    seen.add(piece.url);
+    drafts.push(draft);
+  }
+  return dedupeDrafts(drafts);
+}
+__name(qualifyXPosts, "qualifyXPosts");
+function statusIdFromUrl(url) {
+  return url.match(/\/status\/(\d+)/)?.[1] ?? null;
+}
+__name(statusIdFromUrl, "statusIdFromUrl");
+function shouldFetchThread(root, posts, account) {
+  if (root.article || root.replies < 2 || charCount(root.text) < 80) return false;
+  if (pieceFrom(root, posts, account)) return false;
+  return THREAD_HINT.test(root.text);
+}
+__name(shouldFetchThread, "shouldFetchThread");
+function nextHydrationTarget(posts, account, tried) {
+  const qualified = new Set(
+    qualifyXPosts(posts, account).map((draft) => statusIdFromUrl(draft.canonicalUrl)).filter((id) => Boolean(id))
+  );
+  const roots = dedupePosts(posts).filter((post) => !post.authorHandle || sameHandle(post.authorHandle, account.handle)).filter(isRoot).sort(newest);
+  let filled = 0;
+  for (const root of roots) {
+    const needsArticle = Boolean(root.article) && !hasArticleBody(root);
+    if (!tried.has(root.id) && needsArticle && root.article && !promoLead(root.article.title, root.article.preview)) {
+      return { id: root.id, kind: "status" };
+    }
+    if (qualified.has(root.id)) {
+      filled += 1;
+      if (filled >= account.perRun) return null;
+      continue;
+    }
+    if (tried.has(root.id)) continue;
+    if (shouldFetchThread(root, posts, account)) return { id: root.id, kind: "thread" };
+  }
+  return null;
+}
+__name(nextHydrationTarget, "nextHydrationTarget");
+async function defaultGet(path) {
+  let last;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await fetchJson(`${FX_API}${path}`);
+    } catch (error) {
+      last = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt === 1 || !/HTTP (404|429|5\d\d)\b/.test(message)) break;
+    }
+  }
+  throw last instanceof Error ? last : new Error(String(last));
+}
+__name(defaultGet, "defaultGet");
+function callError(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+__name(callError, "callError");
+function isMissing(error) {
+  return /HTTP 404\b/.test(error);
+}
+__name(isMissing, "isMissing");
+async function loadFxPosts(account, get) {
+  const settle = /* @__PURE__ */ __name(async (path) => {
+    try {
+      return { ok: true, value: await get(path) };
+    } catch (error) {
+      return { ok: false, error: callError(error) };
+    }
+  }, "settle");
+  const [articles, statuses] = await Promise.all([
+    settle(`/2/profile/${encodeURIComponent(account.handle)}/articles?count=8`),
+    settle(`/2/profile/${encodeURIComponent(account.handle)}/statuses?count=20`)
+  ]);
+  const failures = [articles, statuses].filter(
+    (result) => !result.ok && !isMissing(result.error)
+  );
+  if (!articles.ok && !statuses.ok) {
+    throw new Error(`articles: ${articles.error}; statuses: ${statuses.error}`);
+  }
+  for (const failure of failures) console.error(`x @${account.handle}: ${failure.error}`);
+  const posts = dedupePosts([
+    ...articles.ok ? postsFromFxPayload(articles.value) : [],
+    ...statuses.ok ? postsFromFxPayload(statuses.value) : []
+  ]);
+  if (!posts.length && failures.length) throw new Error(failures.map((result) => result.error).join("; "));
+  return posts;
+}
+__name(loadFxPosts, "loadFxPosts");
+async function defaultFallback(account) {
+  const errors = [];
+  try {
+    const xml = await fetchText(`https://fixupx.com/${encodeURIComponent(account.handle)}/feed.xml?count=20`);
+    const posts = postsFromFixupRss(xml, account);
+    if (posts.length) return posts;
+    errors.push("fixupx rss had no posts");
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+  }
+  try {
+    const html2 = await fetchText(
+      `https://syndication.twitter.com/srv/timeline-profile/screen-name/${encodeURIComponent(account.handle)}`
+    );
+    const posts = postsFromSyndication(html2, account);
+    if (posts.length) return posts;
+    errors.push("syndication had no posts");
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+  }
+  throw new Error(errors.join("; ") || "x fallback failed");
+}
+__name(defaultFallback, "defaultFallback");
+async function hydrate(posts, account, get) {
+  let pool = posts;
+  const tried = /* @__PURE__ */ new Set();
+  for (let index = 0; index < HYDRATE_MAX; index += 1) {
+    const target = nextHydrationTarget(pool, account, tried);
+    if (!target) break;
+    tried.add(target.id);
+    const path = target.kind === "thread" ? `/2/thread/${target.id}` : `/2/status/${target.id}`;
+    try {
+      pool = dedupePosts([...pool, ...postsFromFxPayload(await get(path))]);
+    } catch (error) {
+      console.error(`x ${target.kind} ${target.id}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+  return pool;
+}
+__name(hydrate, "hydrate");
+async function fetchXAccount(account, deps = {}) {
+  const get = deps.get ?? defaultGet;
+  const fallbackPosts = deps.fallbackPosts ?? defaultFallback;
+  const fromJson = /* @__PURE__ */ __name(async () => {
+    const posts = postsByOwner(await loadFxPosts(account, get), account);
+    return qualifyXPosts(await hydrate(posts, account, get), account);
+  }, "fromJson");
+  let drafts = [];
+  let failure = null;
+  let sawSuccess = false;
+  for (let pass = 0; pass < 2 && drafts.length === 0; pass += 1) {
+    try {
+      drafts = await fromJson();
+      sawSuccess = true;
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("user id mismatch")) throw error;
+      failure = error;
+    }
+  }
+  if (drafts.length || sawSuccess) return drafts;
+  const message = failure instanceof Error ? failure.message : String(failure ?? "x json failed");
+  console.error(`x json @${account.handle} failed: ${message}`);
+  try {
+    return qualifyXPosts(await fallbackPosts(account), account);
+  } catch (fallbackError) {
+    console.error(
+      `x fallback @${account.handle} failed: ${fallbackError instanceof Error ? fallbackError.message : fallbackError}`
+    );
+    throw failure instanceof Error ? failure : new Error(message);
+  }
+}
+__name(fetchXAccount, "fetchXAccount");
+
 // src/sources.ts
 var FEEDS = [
   { id: "kannetflix", name: "\u770B\u5948\u98DE", url: "https://kannetflix.com/index.xml", dailyLimit: 8 },
@@ -1239,12 +1926,20 @@ async function qualifyFeed(spec, limit) {
   return qualify(entries, spec).slice(0, limit);
 }
 __name(qualifyFeed, "qualifyFeed");
-var SOURCES = FEEDS.map((spec) => ({
-  id: spec.id,
-  name: spec.name,
-  hint: spec.url,
-  fetch: /* @__PURE__ */ __name(() => qualifyFeed(spec, spec.dailyLimit), "fetch")
-}));
+var SOURCES = [
+  ...FEEDS.map((spec) => ({
+    id: spec.id,
+    name: spec.name,
+    hint: spec.url,
+    fetch: /* @__PURE__ */ __name(() => qualifyFeed(spec, spec.dailyLimit), "fetch")
+  })),
+  ...X_ACCOUNTS.map((account) => ({
+    id: account.id,
+    name: account.name,
+    hint: `https://x.com/${account.handle}`,
+    fetch: /* @__PURE__ */ __name(() => fetchXAccount(account), "fetch")
+  }))
+];
 function knownSource(id) {
   return SOURCES.find((source) => source.id === id);
 }
@@ -2044,10 +2739,10 @@ function displayAuthor(author) {
   return author && author.trim() ? author : "\u672A\u77E5";
 }
 __name(displayAuthor, "displayAuthor");
-function attribution(item) {
+function attribution2(item) {
   return `\u6765\u6E90\uFF1A<strong>${esc(item.source_name)}</strong> \xB7 \u4F5C\u8005\uFF1A<strong>${esc(displayAuthor(item.author))}</strong> \xB7 <a class="origin" href="${safeHref(item.canonical_url)}" target="_blank" rel="noopener noreferrer">\u539F\u6587</a>`;
 }
-__name(attribution, "attribution");
+__name(attribution2, "attribution");
 function reprint(item) {
   const author = item.author?.trim() ? `<p><span>\u4F5C\u8005</span>${esc(item.author)}</p>` : "";
   return `<aside class="reprint">
@@ -2171,7 +2866,7 @@ function classicsBlock(view) {
       <div>
         <h3><a href="/a/${item.id}">${esc(item.title)}</a></h3>
         ${item.ai_summary ? `<p class="excerpt"><span class="ai-mark">AI \u6458\u8981</span> ${esc(item.ai_summary)}</p>` : item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
-        <p class="attr">${attribution(item)}</p>
+        <p class="attr">${attribution2(item)}</p>
         <p class="submeta">${esc([TOPICS.find((topic) => topic.id === item.topic)?.label, item.quality_score ? `${item.quality_score} \u5206` : ""].filter(Boolean).join(" \xB7 "))}</p>
       </div>
     </article>`
@@ -2222,7 +2917,7 @@ function itemCard(item, index, sourceFilter, query = "") {
     <div>
       <h3><a href="/a/${item.id}">${titleHtml}</a></h3>
       ${summary ? `<p class="excerpt">${!query && item.ai_summary ? `<span class="ai-mark">AI \u6458\u8981</span> ` : ""}${summaryHtml}</p>` : ""}
-      <p class="attr">${attribution(item)}</p>
+      <p class="attr">${attribution2(item)}</p>
       ${tagLinks(item, sourceFilter)}
       <p class="submeta">${esc(bits.join(" \xB7 "))}</p>
     </div>
@@ -2357,6 +3052,7 @@ function renderAbout(origin) {
     <h2>\u73B0\u5728\u7684\u6765\u6E90</h2>
     <ul>${sources}</ul>
     <p>\u82F1\u6587\u6765\u6E90\u5DF2\u7ECF\u62FF\u6389\u3002V2EX \u7684\u5B98\u65B9\u63A5\u53E3\u4ECE Cloudflare \u7684\u5730\u5740\u8BBF\u95EE\u4F1A\u8FD4\u56DE 403\uFF0C\u6240\u4EE5\u4E5F\u4E0D\u76F4\u63A5\u6293\u3002\u6807\u9898\u91CC\u6C49\u5B57\u4E0D\u591F\u591A\u7684\u6761\u76EE\u4F1A\u88AB\u8DF3\u8FC7\u3002</p>
+    <p>X \u4E0A\u7684\u56DB\u4E2A\u8D26\u53F7\u53EA\u6536\u957F\u6587\u548C\u8F83\u957F\u7684\u81EA\u7EBF\u7A0B\u6559\u7A0B\u3002\u77ED\u66F4\u65B0\u3001\u8F6C\u5E16\u3001\u56DE\u590D\u522B\u4EBA\u3001\u62C9\u7FA4\u3001\u9080\u8BF7\u7801\u548C\u300C\u901F\u5EA6\u51B2 / \u624B\u6162\u65E0\u300D\u4E0D\u4F1A\u8FDB\u6765\u3002\u6BCF\u4E2A\u8D26\u53F7\u6BCF\u6B21\u6700\u591A\u4E24\u6761\uFF0C\u907F\u514D\u6324\u5360\u5F53\u5929\u7684\u540D\u989D\u3002</p>
     <h2>\u7248\u6743</h2>
     <p>\u672C\u6587\u8F6C\u8F7D\u81EA\u5404\u6765\u6E90\u7AD9\u70B9\uFF0C\u7248\u6743\u5F52\u539F\u4F5C\u8005\u6240\u6709\uFF0C\u5982\u6709\u4FB5\u6743\u8BF7\u8054\u7CFB\u5220\u9664\u3002\u6BCF\u7BC7\u6587\u7AE0\u7684\u5F00\u5934\u548C\u7ED3\u5C3E\u90FD\u91CD\u590D\u4E86\u539F\u6587\u6807\u9898\u3001\u6765\u6E90\u548C\u539F\u6587\u94FE\u63A5\u3002</p>
   </article>`;

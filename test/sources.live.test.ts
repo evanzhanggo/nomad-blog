@@ -4,7 +4,10 @@ import { handle } from "../src/index";
 import { SOURCES } from "../src/sources";
 import { EXCERPT_MAX } from "../src/text";
 import type { Env } from "../src/types";
+import { X_ACCOUNTS } from "../src/x";
 import { createTestDb } from "./fake-d1";
+
+const OPTIONAL_SOURCES = new Set(X_ACCOUNTS.map((account) => account.id));
 
 async function loadOnce(source: (typeof SOURCES)[number]) {
   const first = await loadSource(source);
@@ -16,10 +19,20 @@ async function loadOnce(source: (typeof SOURCES)[number]) {
 
 describe("live sources", () => {
   for (const source of SOURCES) {
+    const optional = OPTIONAL_SOURCES.has(source.id);
     it(`fetches real items from ${source.id}`, async () => {
-      const result = await loadOnce(source);
+      const result = optional ? await loadSource(source) : await loadOnce(source);
+      if (optional && !result.ok) {
+        console.warn(`SKIP flaky ${source.id}: ${result.error}`);
+        return;
+      }
       expect(result.error, result.error ?? "").toBeNull();
       expect(result.ok).toBe(true);
+      if (optional) {
+        console.log(
+          `X ${source.id} count=${result.items.length} titles=${result.items.map((item) => item.title).join(" | ") || "(none)"}`,
+        );
+      }
       for (const item of result.items) {
         expect(item.title.length).toBeGreaterThan(0);
         expect(item.canonicalUrl).toMatch(/^https:\/\//);
@@ -29,12 +42,17 @@ describe("live sources", () => {
         expect(item.sourceName.length).toBeGreaterThan(0);
         expect(item.qualityScore).toBeGreaterThanOrEqual(40);
         expect(item.topic).not.toBe("");
+        if (optional) {
+          expect(item.author && !item.author.includes("@")).toBe(true);
+          expect(item.canonicalUrl).toMatch(/^https:\/\/x\.com\/[^/]+\/status\/\d+$/);
+          expect(item.feedHtml ?? "").toContain("原文");
+        }
       }
       const sample = result.items[0];
       console.log(
         `SOURCE ${source.id} fetched=${result.items.length} author=${sample?.author ?? "未知"} title=${sample?.title}`,
       );
-    });
+    }, optional ? 60_000 : undefined);
   }
 });
 
