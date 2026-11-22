@@ -129,8 +129,22 @@ curl -X POST https://nomad.evanzhang.cloud/admin/backfill \
 | `rososa` | 爱沙尼亚电子居民社区 | `https://rososa.com/feed/` |
 | `sspai` | 少数派 | `https://sspai.com/feed`（只留下跨过质量线的） |
 | `eleduck` | 电鸭社区 | `https://eleduck.com/feed/latest.xml`（招聘和闲聊会被丢掉） |
+| `hejushang8` | 何居上 | `https://x.com/hejushang8`（只收长文和长教程，每次最多 2 条） |
+| `vansvoler` | 海无方 | `https://x.com/vansvoler`（同上） |
+| `niaoshu` | 鸟叔本鸟 | `https://x.com/niaoshu`（同上） |
+| `donniy520` | 东逆 | `https://x.com/donniy520`（同上） |
 
-质量分写在 `src/score.ts`。先丢掉招聘、内推、派单、美工。然后按主题词（海外开卡、手机卡、税号、AI 订阅、签证、远程方法、券商）打分，加上指南/教程、摘要长度和热度。低于 40 分不入库。首页「经典教程」只显示回填的高分文章，按主题分页签；「最新收录」仍是每日两次的新条目。
+X 不走官方 API，也不走会拒绝这个采集器的 `rsshub.app`。每个账号先读 FxEmbed 的公开 JSON：
+
+- `https://api.fxtwitter.com/2/profile/{handle}/articles?count=8`
+- `https://api.fxtwitter.com/2/profile/{handle}/statuses?count=20`
+- 长文正文再读 `https://api.fxtwitter.com/2/status/{id}`。文章列表里的 `article.content` 是空的，只有这一步有全文。自线程用 `https://api.fxtwitter.com/2/thread/{id}`。
+
+JSON 整段失败时，先退到 `https://fixupx.com/{handle}/feed.xml`，再退到 `https://syndication.twitter.com/srv/timeline-profile/screen-name/{handle}`。备用源经常没有长文全文，syndication 也容易返回 429。四个账号各是一个来源：哪一个失败只记在当轮报告里，原来的 8 个 RSS 照常采集。
+
+只留下 X Articles，以及合并后仍然够长的教程帖或自线程。短更新、转帖、回复别人、拉群、邀请码、「速度冲」「手慢无」会丢掉。标题用文章标题，否则用正文第一句。作者写显示名。正文是长文段落，或同一条自线程拼起来的段落，末尾带原文链接。每个账号每次最多交出 2 条最新的合格内容，避免占满一轮 16 条的名额。
+
+质量分写在 `src/score.ts`。先丢掉招聘、内推、派单、美工。然后按主题词（海外开卡、手机卡、税号、AI 订阅、签证、远程方法、券商）打分，加上指南/教程、摘要长度和热度。低于 40 分不入库。美卡、英卡、PayPal、IBAN、红包卡、Google AI 这些词也算进对应主题，但只出现在标题里还到不了 40 分，RSS 的门槛没有放低。首页「经典教程」只显示回填的高分文章，按主题分页签；「最新收录」仍是每日两次的新条目。
 
 请求都带 `User-Agent: NomadBlogBot/1.0 (+https://nomad.evanzhang.cloud; attribution)`。全文优先用订阅源的 `content:encoded`，否则打开原文页提取。摘要模型是 Workers AI 的 `@cf/meta/llama-3.3-70b-instruct-fp8-fast`。上传脚本时除了 D1，还要声明 AI 绑定 `{ "type": "ai", "name": "AI" }`。
 
@@ -138,7 +152,8 @@ curl -X POST https://nomad.evanzhang.cloud/admin/backfill \
 
 - Hacker News、dev.to、Medium、Nomad Gate、JohnnyFD、Remote OK：英文来源。
 - V2EX 官方 JSON 和 Atom：在 Cloudflare 的出口 IP 上返回 403。
-- `rsshub.app`：对这个采集器直接拒绝。能用的镜像也没有「远程工作」节点这条路由，全站最新里几乎碰不到游民或签证，所以不用它当生产来源。
+- `rsshub.app`：对这个采集器直接拒绝。能用的镜像也没有「远程工作」节点这条路由，全站最新里几乎碰不到游民或签证，所以不用它当生产来源。X 改走上面的 FxEmbed JSON，不走这里。
+- X 官方 API：没有付费账号，也不读取 bearer token。
 
 ## 怎么加一个来源
 
@@ -148,7 +163,7 @@ curl -X POST https://nomad.evanzhang.cloud/admin/backfill \
 
 RSS 或 Atom 可以用 `parseFeed`（`src/feed.ts`）。它只取 `description` / `summary`，没有描述时才退回 `content` 的开头，并且同样截断。
 
-加完以后跑 `npm test`。`test/sources.live.test.ts` 会真的请求每个来源，空结果或打不开都会失败。确认有条目后，再 `npm run build`，把新的 `dist/worker.js` 留在仓库里。
+加完以后跑 `npm test`。`test/sources.live.test.ts` 会真的请求每个来源。RSS 打不开会失败。X 走的是非官方接口，请求失败时这条测试会跳过，不会把整组带红；解析和过滤在 `test/x.test.ts` 里用夹具覆盖。确认有条目后，再 `npm run build`，把新的 `dist/worker.js` 留在仓库里。
 
 主题标签在 `src/tags.ts`。匹配的是标题和摘要里的关键词，中英都可以。一条最多四个标签。
 
@@ -167,7 +182,7 @@ RSS 或 Atom 可以用 `parseFeed`（`src/feed.ts`）。它只取 `description` 
 npm test
 ```
 
-单测覆盖 URL 规范化、摘要截断、RSS 解析、每日名额和去重、页面转义和来源行、管理接口的鉴权。另外一组测试会访问上面每个来源，把采到的条目写进本地 sqlite，再请求首页、详情、签证筛选和 RSS，确认页面上有来源、作者和原文链接。
+单测覆盖 URL 规范化、摘要截断、RSS 解析、每日名额和去重、页面转义和来源行、管理接口的鉴权，以及 X 长文的解析和过滤。另外一组测试会访问上面每个来源，把采到的条目写进本地 sqlite，再请求首页、详情、签证筛选和 RSS，确认页面上有来源、作者和原文链接。X 接口失败时只跳过该来源。
 
 ## 目录
 

@@ -35,4 +35,16 @@ describe("scoreQuality", () => {
     expect(quality.topic).toBe("");
     expect(quality.score).toBeLessThan(MIN_QUALITY_SCORE);
   });
+
+  it("keeps card, PayPal, IBAN, red pocket, and Google AI guides without passing a bare keyword", () => {
+    expect(scoreQuality("美卡系列：Capital One 申请教程", guide).topic).toBe("bank");
+    expect(scoreQuality("英卡 Monzo 开户教程", guide).topic).toBe("bank");
+    expect(scoreQuality("英国 IBAN 账户开通教程", guide).score).toBeGreaterThanOrEqual(MIN_QUALITY_SCORE);
+    expect(scoreQuality("美国红包卡保号教程", guide).topic).toBe("sim");
+    expect(scoreQuality("土区 Google AI Ultra 订阅教程", guide).topic).toBe("ai");
+    expect(scoreQuality("美卡来了", "冲").score).toBeLessThan(MIN_QUALITY_SCORE);
+    const paypal = scoreQuality("美区 PayPal 注册及养号防封指南", guide);
+    expect(paypal.rejected).toBe(false);
+    expect(paypal.score).toBeGreaterThanOrEqual(MIN_QUALITY_SCORE);
+  });
 });

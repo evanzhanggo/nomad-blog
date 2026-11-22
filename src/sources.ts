@@ -2,11 +2,13 @@ import { parseFeed } from "./feed";
 import { buildDraft, byRank, dedupeDrafts, withTag } from "./item";
 import { fetchText } from "./text";
 import type { Draft, Source } from "./types";
+import { fetchXAccount, X_ACCOUNTS } from "./x";
 
 /**
  * 中文、且尽量是各站自己的 RSS。V2EX 官方接口和 linux.do 在 Cloudflare 上会 403，
  * rsshub.app 会拒绝这个采集器，云居民的 feed 会落到验证页，所以都没有接。
  * 少数派和电鸭仍会抓，但只有跨过质量线的指南才会留下。
+ * X 账号不走官方 API，见 src/x.ts。每个账号单独成一个来源，失败不会挡住下面的 RSS。
  */
 
 interface FeedSpec {
@@ -58,12 +60,20 @@ export async function qualifyFeed(spec: FeedSpec, limit: number): Promise<Draft[
   return qualify(entries, spec).slice(0, limit);
 }
 
-export const SOURCES: Source[] = FEEDS.map((spec) => ({
-  id: spec.id,
-  name: spec.name,
-  hint: spec.url,
-  fetch: () => qualifyFeed(spec, spec.dailyLimit),
-}));
+export const SOURCES: Source[] = [
+  ...FEEDS.map((spec) => ({
+    id: spec.id,
+    name: spec.name,
+    hint: spec.url,
+    fetch: () => qualifyFeed(spec, spec.dailyLimit),
+  })),
+  ...X_ACCOUNTS.map((account) => ({
+    id: account.id,
+    name: account.name,
+    hint: `https://x.com/${account.handle}`,
+    fetch: () => fetchXAccount(account),
+  })),
+];
 
 export function knownSource(id: string): Source | undefined {
   return SOURCES.find((source) => source.id === id);
