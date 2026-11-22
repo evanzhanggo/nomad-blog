@@ -542,7 +542,7 @@ function articleHtmlFromSource(raw, pageUrl) {
 __name(articleHtmlFromSource, "articleHtmlFromSource");
 
 // src/summary.ts
-var SUMMARY_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
+var SUMMARY_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 var INPUT_CHARS = 6e3;
 function summaryInput(title, contentHtml, excerpt) {
   const body = contentHtml ? visibleText(contentHtml) : excerpt;
@@ -552,21 +552,26 @@ function summaryInput(title, contentHtml, excerpt) {
 \u6B63\u6587\uFF1A${clipped}`;
 }
 __name(summaryInput, "summaryInput");
+function stripThink(raw) {
+  return raw.replace(/<think>[\s\S]*?<\/think>/gi, " ").replace(/^[\s\S]*?<\/think>/i, " ").replace(/<think>[\s\S]*$/gi, "");
+}
+__name(stripThink, "stripThink");
 function readModelText(result) {
-  if (typeof result === "string") return result;
-  if (!result || typeof result !== "object") return "";
-  const record = result;
-  if (typeof record.response === "string") return record.response;
-  const choices = record.choices;
-  if (!Array.isArray(choices) || !choices.length) return "";
-  const message = choices[0].message;
-  return typeof message?.content === "string" ? message.content : "";
+  let text = "";
+  if (typeof result === "string") text = result;
+  else if (result && typeof result === "object") {
+    const record = result;
+    if (typeof record.response === "string") text = record.response;
+    else if (Array.isArray(record.choices) && record.choices.length) {
+      const message = record.choices[0].message;
+      if (typeof message?.content === "string") text = message.content;
+    }
+  }
+  return stripThink(text);
 }
 __name(readModelText, "readModelText");
 function cleanSummary(raw) {
-  let text = raw.replace(/<think>[\s\S]*?<\/think>/gi, " ");
-  text = text.replace(/^[\s\S]*?<\/think>/i, " ");
-  text = plainTitle(text);
+  let text = plainTitle(stripThink(raw));
   text = text.replace(/^(摘要|总结|AI摘要|简体中文摘要|以下是(?:摘要|总结)?)[:：]\s*/i, "");
   text = text.replace(/^["“「]|["”」]$/g, "").trim();
   text = text.replace(/\s+/g, " ").trim();
@@ -581,25 +586,26 @@ function cleanSummary(raw) {
 }
 __name(cleanSummary, "cleanSummary");
 async function summarizeArticle(ai, title, contentHtml, excerpt) {
-  if (!ai) return null;
+  if (!ai) return { text: null, error: null };
   const source = summaryInput(title, contentHtml, excerpt);
-  if (Array.from(source).length < 40) return null;
+  if (Array.from(source).length < 40) return { text: null, error: null };
   try {
     const result = await ai.run(SUMMARY_MODEL, {
       messages: [
         {
           role: "system",
-          content: "\u4F60\u662F\u4E2D\u6587\u7F16\u8F91\u3002\u53EA\u8F93\u51FA\u4E24\u5230\u4E09\u53E5\u7B80\u4F53\u4E2D\u6587\u6458\u8981\uFF0C\u5927\u7EA680\u5230150\u4E2A\u5B57\u3002\u4E0D\u8981\u6807\u9898\u3001\u524D\u8A00\u3001\u7F16\u53F7\u3001\u5F15\u53F7\u6216\u82F1\u6587\u8BF4\u660E\u3002"
+          content: "\u4F60\u662F\u4E2D\u6587\u7F16\u8F91\u3002\u539F\u6587\u5373\u4F7F\u662F\u7E41\u4F53\u4E2D\u6587\uFF0C\u4E5F\u5FC5\u987B\u6539\u5199\u6210\u7B80\u4F53\u4E2D\u6587\u3002\u53EA\u8F93\u51FA\u4E24\u5230\u4E09\u53E5\u7B80\u4F53\u4E2D\u6587\u6458\u8981\uFF0C\u5927\u7EA680\u5230150\u4E2A\u5B57\u3002\u4E0D\u8981\u6807\u9898\u3001\u524D\u8A00\u3001\u7F16\u53F7\u3001\u5F15\u53F7\u3001\u82F1\u6587\u8BF4\u660E\u6216\u7E41\u4F53\u5B57\u3002"
         },
         { role: "user", content: source }
       ],
-      max_tokens: 256,
+      max_tokens: 1024,
       temperature: 0.2
     });
-    return cleanSummary(readModelText(result));
+    return { text: cleanSummary(readModelText(result)), error: null };
   } catch (error) {
-    console.error("summary failed", error instanceof Error ? error.message : error);
-    return null;
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("summary failed", message);
+    return { text: null, error: message };
   }
 }
 __name(summarizeArticle, "summarizeArticle");
@@ -655,10 +661,10 @@ async function writeSummary(db, id, summary, at) {
 }
 __name(writeSummary, "writeSummary");
 async function summarizeRow(env, row, at) {
-  if (!env.AI) return false;
-  const summary = await summarizeArticle(env.AI, row.title, row.content_html, row.excerpt ?? "");
-  await writeSummary(env.DB, row.id, summary, at);
-  return summary != null;
+  if (!env.AI) return { ok: false, error: null };
+  const { text, error } = await summarizeArticle(env.AI, row.title, row.content_html, row.excerpt ?? "");
+  await writeSummary(env.DB, row.id, text, at);
+  return { ok: text != null, error };
 }
 __name(summarizeRow, "summarizeRow");
 async function storeAndFetchContent(env, items, fetchLimit, summaryLimit) {
@@ -690,7 +696,7 @@ async function storeAndFetchContent(env, items, fetchLimit, summaryLimit) {
       ).bind(item.canonicalUrl).first();
       if (!row) continue;
       summaries += 1;
-      if (await summarizeRow(env, row, at)) summarized += 1;
+      if ((await summarizeRow(env, row, at)).ok) summarized += 1;
     } catch (error) {
       console.error("content attach failed", error instanceof Error ? error.message : error);
       failed += 1;
@@ -724,7 +730,7 @@ async function fillMissingContent(env, limit) {
       }
       filled += 1;
       if (!env.AI) continue;
-      if (await summarizeRow(env, { ...row, content_html: html2 }, at)) summarized += 1;
+      if ((await summarizeRow(env, { ...row, content_html: html2 }, at)).ok) summarized += 1;
     } catch (error) {
       console.error("fetch-content failed", error instanceof Error ? error.message : error);
       failed += 1;
@@ -746,17 +752,22 @@ async function fillMissingSummaries(env, limit) {
   const pending = rows.results ?? [];
   let summarized = 0;
   let failed = 0;
+  let lastError = null;
   const at = (/* @__PURE__ */ new Date()).toISOString();
   for (const row of pending) {
     try {
-      if (await summarizeRow(env, row, at)) summarized += 1;
+      const outcome = await summarizeRow(env, row, at);
+      if (outcome.error) lastError = outcome.error;
+      if (outcome.ok) summarized += 1;
       else failed += 1;
     } catch (error) {
-      console.error("summarize failed", error instanceof Error ? error.message : error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("summarize failed", message);
+      lastError = message;
       failed += 1;
     }
   }
-  return { limit, scanned: pending.length, summarized, failed };
+  return { limit, scanned: pending.length, summarized, failed, lastError };
 }
 __name(fillMissingSummaries, "fillMissingSummaries");
 

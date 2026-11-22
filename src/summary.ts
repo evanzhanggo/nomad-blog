@@ -1,8 +1,8 @@
 import { visibleText } from "./content";
 import { plainTitle } from "./text";
 
-/** Current Workers AI Qwen instruct model. qwen2.5-7b-instruct is not in the catalog. */
-export const SUMMARY_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
+/** Verified in production. qwen3-30b-a3b-fp8 was deprecated on 2026-11-20. */
+export const SUMMARY_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 const INPUT_CHARS = 6_000;
 
@@ -12,22 +12,31 @@ export function summaryInput(title: string, contentHtml: string | null | undefin
   return `标题：${title}\n\n正文：${clipped}`;
 }
 
+/** Drop closed think blocks and an unclosed `<think>...` tail. */
+export function stripThink(raw: string): string {
+  return raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, " ")
+    .replace(/^[\s\S]*?<\/think>/i, " ")
+    .replace(/<think>[\s\S]*$/gi, "");
+}
+
 export function readModelText(result: unknown): string {
-  if (typeof result === "string") return result;
-  if (!result || typeof result !== "object") return "";
-  const record = result as Record<string, unknown>;
-  if (typeof record.response === "string") return record.response;
-  const choices = record.choices;
-  if (!Array.isArray(choices) || !choices.length) return "";
-  const message = (choices[0] as { message?: { content?: unknown } }).message;
-  return typeof message?.content === "string" ? message.content : "";
+  let text = "";
+  if (typeof result === "string") text = result;
+  else if (result && typeof result === "object") {
+    const record = result as Record<string, unknown>;
+    if (typeof record.response === "string") text = record.response;
+    else if (Array.isArray(record.choices) && record.choices.length) {
+      const message = (record.choices[0] as { message?: { content?: unknown } }).message;
+      if (typeof message?.content === "string") text = message.content;
+    }
+  }
+  return stripThink(text);
 }
 
 /** Plain 简体中文 summary, or null when the model output is not usable. */
 export function cleanSummary(raw: string): string | null {
-  let text = raw.replace(/<think>[\s\S]*?<\/think>/gi, " ");
-  text = text.replace(/^[\s\S]*?<\/think>/i, " ");
-  text = plainTitle(text);
+  let text = plainTitle(stripThink(raw));
   text = text.replace(/^(摘要|总结|AI摘要|简体中文摘要|以下是(?:摘要|总结)?)[:：]\s*/i, "");
   text = text.replace(/^["“「]|["”」]$/g, "").trim();
   text = text.replace(/\s+/g, " ").trim();
@@ -46,26 +55,27 @@ export async function summarizeArticle(
   title: string,
   contentHtml: string | null | undefined,
   excerpt: string,
-): Promise<string | null> {
-  if (!ai) return null;
+): Promise<{ text: string | null; error: string | null }> {
+  if (!ai) return { text: null, error: null };
   const source = summaryInput(title, contentHtml, excerpt);
-  if (Array.from(source).length < 40) return null;
+  if (Array.from(source).length < 40) return { text: null, error: null };
   try {
     const result = await ai.run(SUMMARY_MODEL, {
       messages: [
         {
           role: "system",
           content:
-            "你是中文编辑。只输出两到三句简体中文摘要，大约80到150个字。不要标题、前言、编号、引号或英文说明。",
+            "你是中文编辑。原文即使是繁体中文，也必须改写成简体中文。只输出两到三句简体中文摘要，大约80到150个字。不要标题、前言、编号、引号、英文说明或繁体字。",
         },
         { role: "user", content: source },
       ],
-      max_tokens: 256,
+      max_tokens: 1024,
       temperature: 0.2,
     });
-    return cleanSummary(readModelText(result));
+    return { text: cleanSummary(readModelText(result)), error: null };
   } catch (error) {
-    console.error("summary failed", error instanceof Error ? error.message : error);
-    return null;
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("summary failed", message);
+    return { text: null, error: message };
   }
 }

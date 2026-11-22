@@ -132,7 +132,7 @@ curl -X POST https://nomad.evanzhang.cloud/admin/backfill \
 
 质量分写在 `src/score.ts`。先丢掉招聘、内推、派单、美工。然后按主题词（海外开卡、手机卡、税号、AI 订阅、签证、远程方法、券商）打分，加上指南/教程、摘要长度和热度。低于 40 分不入库。首页「经典教程」只显示回填的高分文章，按主题分页签；「最新收录」仍是每日两次的新条目。
 
-请求都带 `User-Agent: NomadBlogBot/1.0 (+https://nomad.evanzhang.cloud; attribution)`。全文优先用订阅源的 `content:encoded`，否则打开原文页提取。摘要模型是 Workers AI 的 `@cf/qwen/qwen3-30b-a3b-fp8`（目录里没有 `@cf/qwen/qwen2.5-7b-instruct`）。上传脚本时除了 D1，还要声明 AI 绑定 `{ "type": "ai", "name": "AI" }`。
+请求都带 `User-Agent: NomadBlogBot/1.0 (+https://nomad.evanzhang.cloud; attribution)`。全文优先用订阅源的 `content:encoded`，否则打开原文页提取。摘要模型是 Workers AI 的 `@cf/meta/llama-3.3-70b-instruct-fp8-fast`。上传脚本时除了 D1，还要声明 AI 绑定 `{ "type": "ai", "name": "AI" }`。
 
 没有接进来的：
 

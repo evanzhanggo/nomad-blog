@@ -77,8 +77,13 @@ describe("cleanSummary", () => {
     expect(readModelText({ choices: [{ message: { content: "摘要：两句说明。" } }] })).toContain("摘要");
     const text = cleanSummary("<think>推理过程</think>\n摘要：这是两句简体中文说明。第二句补充了办理顺序和材料。");
     expect(text).toBe("这是两句简体中文说明。第二句补充了办理顺序和材料。");
+    expect(cleanSummary("这是两句简体中文说明。第二句补充了办理顺序和材料。<think>还在想繁体")).toBe(
+      "这是两句简体中文说明。第二句补充了办理顺序和材料。",
+    );
+    expect(readModelText({ response: "已经写好。<think>unclosed tail" })).toBe("已经写好。");
     expect(cleanSummary("")).toBeNull();
     expect(cleanSummary("<think>only</think>")).toBeNull();
+    expect(cleanSummary("<think>unclosed only")).toBeNull();
   });
 });
 
@@ -143,6 +148,39 @@ describe("admin content endpoints", () => {
 
     const again = await fillMissingSummaries(env, 4);
     expect(again.scanned).toBe(0);
+    expect(again.lastError).toBeNull();
+  });
+
+  it("returns lastError when the summary model throws", async () => {
+    const db = createTestDb();
+    await db
+      .prepare(
+        `INSERT INTO items (
+          canonical_url, title, excerpt, source_id, source_name, collected_at, language
+        ) VALUES ('https://example.com/visa', '克罗地亚数字游民签证教程', '原来的 RSS 摘要，材料、顺序和费用都写在原文里。', 'x', 'X', '2026-11-22T00:00:00.000Z', 'zh')`,
+      )
+      .run();
+    const env = {
+      DB: db,
+      ADMIN_TOKEN: "secret",
+      AI: {
+        run: async () => {
+          throw new Error("5028: @cf/qwen/qwen3-30b-a3b-fp8 was deprecated on 2026-11-20");
+        },
+      },
+    } as Env;
+    const response = await handle(
+      new Request("https://nomad.evanzhang.cloud/admin/summarize?limit=1", {
+        method: "POST",
+        headers: { Authorization: "Bearer secret" },
+      }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { summarized: number; failed: number; lastError: string | null };
+    expect(body.summarized).toBe(0);
+    expect(body.failed).toBe(1);
+    expect(body.lastError).toContain("5028");
   });
 
   it("leaves content null when the fetch fails and keeps the RSS summary", async () => {

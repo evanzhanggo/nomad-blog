@@ -63,11 +63,11 @@ async function summarizeRow(
   env: Env,
   row: { id: number; title: string; excerpt: string; content_html: string | null },
   at: string,
-): Promise<boolean> {
-  if (!env.AI) return false;
-  const summary = await summarizeArticle(env.AI, row.title, row.content_html, row.excerpt ?? "");
-  await writeSummary(env.DB, row.id, summary, at);
-  return summary != null;
+): Promise<{ ok: boolean; error: string | null }> {
+  if (!env.AI) return { ok: false, error: null };
+  const { text, error } = await summarizeArticle(env.AI, row.title, row.content_html, row.excerpt ?? "");
+  await writeSummary(env.DB, row.id, text, at);
+  return { ok: text != null, error };
 }
 
 export async function storeAndFetchContent(
@@ -106,7 +106,7 @@ export async function storeAndFetchContent(
         .first<{ id: number; title: string; excerpt: string; content_html: string | null }>();
       if (!row) continue;
       summaries += 1;
-      if (await summarizeRow(env, row, at)) summarized += 1;
+      if ((await summarizeRow(env, row, at)).ok) summarized += 1;
     } catch (error) {
       console.error("content attach failed", error instanceof Error ? error.message : error);
       failed += 1;
@@ -145,7 +145,7 @@ export async function fillMissingContent(
       }
       filled += 1;
       if (!env.AI) continue;
-      if (await summarizeRow(env, { ...row, content_html: html }, at)) summarized += 1;
+      if ((await summarizeRow(env, { ...row, content_html: html }, at)).ok) summarized += 1;
     } catch (error) {
       console.error("fetch-content failed", error instanceof Error ? error.message : error);
       failed += 1;
@@ -157,7 +157,7 @@ export async function fillMissingContent(
 export async function fillMissingSummaries(
   env: Env,
   limit: number,
-): Promise<{ limit: number; scanned: number; summarized: number; failed: number }> {
+): Promise<{ limit: number; scanned: number; summarized: number; failed: number; lastError: string | null }> {
   const cutoff = new Date(Date.now() - RETRY_MS).toISOString();
   const rows = await env.DB.prepare(
     `SELECT id, title, excerpt, content_html FROM items
@@ -172,15 +172,20 @@ export async function fillMissingSummaries(
   const pending = rows.results ?? [];
   let summarized = 0;
   let failed = 0;
+  let lastError: string | null = null;
   const at = new Date().toISOString();
   for (const row of pending) {
     try {
-      if (await summarizeRow(env, row, at)) summarized += 1;
+      const outcome = await summarizeRow(env, row, at);
+      if (outcome.error) lastError = outcome.error;
+      if (outcome.ok) summarized += 1;
       else failed += 1;
     } catch (error) {
-      console.error("summarize failed", error instanceof Error ? error.message : error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("summarize failed", message);
+      lastError = message;
       failed += 1;
     }
   }
-  return { limit, scanned: pending.length, summarized, failed };
+  return { limit, scanned: pending.length, summarized, failed, lastError };
 }
