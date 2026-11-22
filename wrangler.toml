@@ -1,6 +1,7 @@
 # 游牧手记 — 单 Worker + D1 + 每天两次 Cron。
-# database_id 是占位符，不是真实库。部署前执行 `wrangler d1 create nomad-blog`，
-# 把返回的 id 写到下面。密钥只走 `wrangler secret put`，不要写进仓库。
+# database_id 是生产库 nomad-blog 的 id，不是占位符，也不是密钥。
+# 密钥只走 `wrangler secret put`，不要写进仓库。
+# 生产库已手动应用 migrations 0001 和 0002，部署时不要自动跑迁移。
 name = "nomad-blog"
 main = "src/index.ts"
 compatibility_date = "2026-01-15"
@@ -12,7 +13,7 @@ crons = ["0 0 * * *", "0 14 * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "nomad-blog"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "a9dd83ad-38e7-444d-a04d-dbde9fe392c7"
 migrations_dir = "migrations"
 
 [[routes]]

@@ -22,7 +22,7 @@ D1（绑定名 DB）
 - D1 绑定名：`DB`。数据库名：`nomad-blog`。
 - 自定义域名：`nomad.evanzhang.cloud`（zone `evanzhang.cloud` 已在 Cloudflare）。
 - Worker 名称：`nomad-blog`。
-- 唯一密钥：`ADMIN_TOKEN`。用 `wrangler secret put ADMIN_TOKEN` 写入，不要放进仓库。`wrangler.toml` 里的 `database_id` 是占位符 `00000000-0000-0000-0000-000000000000`，部署前换成 `wrangler d1 create` 返回的 id。
+- 唯一密钥：`ADMIN_TOKEN`。用 `wrangler secret put ADMIN_TOKEN` 写入，不要放进仓库。`wrangler.toml` 里的 `database_id` 是生产库 `nomad-blog` 的 id `a9dd83ad-38e7-444d-a04d-dbde9fe392c7`，不是占位符，也不是密钥。
 
 采集器对每个来源单独 `fetch`、单独超时（大约 12 秒）、单独捕获错误。一个来源失败只会记在当轮报告里。只留下标题以中文为主的条目（至少 8 个汉字，并且汉字不少于汉字与英文字母合计的 35%）。同一篇原文只保留一次。每次运行按新鲜程度最多写入 16 条新内容，所以一天两次最多大约 32 条；第二次不会把第一次已经写入的链接再写一遍。首页按北京时间的收录日分组，同一天的两次结果在同一组里。
 
@@ -50,6 +50,10 @@ curl -X POST http://127.0.0.1:4391/admin/collect \
 
 然后打开首页、一条详情、`/about` 和 `/rss.xml`。
 
+## 自动部署
+
+推送到 `main` 后，Cloudflare Workers Builds 会用已配置的部署命令 `npx wrangler deploy` 自动发布站点。生产 D1 已经手动应用过迁移 `0001` 和 `0002`，构建里不要再跑迁移。`ADMIN_TOKEN` 已是生产 Worker 密钥，`wrangler deploy` 会保留它，不要写进仓库。
+
 ## 部署
 
 仓库里的 `dist/worker.js` 是已经打好的单文件 ES Module，给不经过本机 wrangler 的部署用。自己重新构建：
@@ -60,18 +64,14 @@ npm run build
 
 这会执行 `wrangler deploy --dry-run --outdir dist`，再把产物整理成没有外部 import 的 `dist/worker.js`。
 
-在 Cloudflare 上部署时：
+在 Cloudflare 上核对即将发布的配置（不上传）：
 
 ```bash
-npx wrangler d1 create nomad-blog
-# 把输出的 database_id 写进 wrangler.toml，替换占位符
-
-npx wrangler d1 migrations apply DB --remote
-npx wrangler secret put ADMIN_TOKEN
-npx wrangler deploy
+npm install
+npx wrangler deploy --dry-run
 ```
 
-`wrangler deploy` 会按 `wrangler.toml` 绑定 D1、挂上每天两次的 Cron，并把 Worker 接到 `nomad.evanzhang.cloud`。
+生产库和迁移都已经就绪，这条命令不会创建数据库，也不会应用迁移。需要轮换密钥时再执行 `npx wrangler secret put ADMIN_TOKEN`。`npx wrangler deploy` 会按 `wrangler.toml` 绑定 D1、挂上每天两次的 Cron，并把 Worker 接到 `nomad.evanzhang.cloud`。
 
 上线后可以手动补一轮：
 
