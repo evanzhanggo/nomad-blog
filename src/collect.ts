@@ -1,3 +1,4 @@
+import { CONTENT_FETCH_LIMIT, storeAndFetchContent, SUMMARY_LIMIT } from "./fulltext";
 import { byRank, dedupeDrafts, isPredominantlyChinese } from "./item";
 import { passesQuality } from "./score";
 import { SOURCES } from "./sources";
@@ -95,6 +96,7 @@ export async function runCollect(env: Env, trigger: "cron" | "manual"): Promise<
   const { picked, duplicates, capped } = selectFresh(pool, existing, RUN_LIMIT);
   const collectedAt = new Date().toISOString();
   let inserted = 0;
+  let fresh: Draft[] = [];
   if (picked.length) {
     const results = await env.DB.batch(
       picked.map((item) =>
@@ -125,6 +127,10 @@ export async function runCollect(env: Env, trigger: "cron" | "manual"): Promise<
       ),
     );
     inserted = results.reduce((sum, result) => sum + (result.meta?.changes ?? 0), 0);
+    fresh = picked.filter((_, index) => (results[index]?.meta?.changes ?? 0) > 0);
+  }
+  if (fresh.length) {
+    await storeAndFetchContent(env, fresh, CONTENT_FETCH_LIMIT, SUMMARY_LIMIT);
   }
 
   const failed = loaded.filter((source) => !source.ok).length;

@@ -20,7 +20,9 @@ export function normalizePage(requested: number, total: number, pageSize = PAGE_
 
 const ITEM_COLUMNS = `id, canonical_url, title, excerpt, source_id, source_name, author,
   published_at, collected_at, popularity, popularity_label, tags, language, discussion_url,
-  topic, quality_score, section`;
+  topic, quality_score, section, ai_summary`;
+
+const DETAIL_COLUMNS = `${ITEM_COLUMNS}, content_html, content_fetched_at, ai_summary_at`;
 
 function whereClause(sourceId: string, tag: string): { sql: string; binds: string[] } {
   const parts = ["section = 'daily'"];
@@ -71,7 +73,7 @@ export async function listItems(
 export async function getItem(db: D1Database, id: number): Promise<ItemRow | null> {
   return db
     .prepare(
-      `SELECT ${ITEM_COLUMNS}
+      `SELECT ${DETAIL_COLUMNS}
        FROM items WHERE id = ?`,
     )
     .bind(id)

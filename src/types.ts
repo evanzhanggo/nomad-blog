@@ -1,6 +1,8 @@
 export interface Env {
   DB: D1Database;
   ADMIN_TOKEN?: string;
+  /** Workers AI binding. Missing in tests; production upload must declare it. */
+  AI?: Ai;
 }
 
 export interface DraftInput {
@@ -15,6 +17,8 @@ export interface DraftInput {
   popularityLabel?: string;
   discussionUrl?: string | null;
   commentBonus?: number;
+  /** Raw RSS `content:encoded` or a page already downloaded for this draft. */
+  contentHtml?: string | null;
 }
 
 export interface Draft {
@@ -33,6 +37,7 @@ export interface Draft {
   language: "zh" | "en";
   topic: string;
   qualityScore: number;
+  feedHtml: string | null;
 }
 
 export interface ItemRow {
@@ -53,6 +58,10 @@ export interface ItemRow {
   topic: string;
   quality_score: number;
   section: string;
+  ai_summary?: string | null;
+  ai_summary_at?: string | null;
+  content_html?: string | null;
+  content_fetched_at?: string | null;
 }
 
 export interface Source {

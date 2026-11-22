@@ -217,6 +217,42 @@ footer.site p { margin: 0.3rem 0; }
 .about ul { padding-left: 1.2rem; }
 .about li { margin: 0.35rem 0; }
 code { font-size: 0.92em; }
+.ai-mark {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0.02rem 0.4rem;
+  border-radius: 999px;
+  background: var(--teal-soft);
+  color: var(--teal);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.ai-summary {
+  margin: 0.9rem 0 1.1rem;
+  padding: 0.85rem 1rem;
+  background: var(--teal-soft);
+  border-left: 3px solid var(--teal);
+}
+.ai-summary strong { display: block; margin-bottom: 0.25rem; font-size: 0.82rem; letter-spacing: 0.08em; }
+.reprint {
+  margin: 0.9rem 0;
+  padding: 0.75rem 0.9rem;
+  background: var(--paper-2);
+  border-left: 3px solid var(--teal);
+}
+.reprint p { margin: 0.2rem 0; }
+.reprint span { display: inline-block; min-width: 4.5rem; color: var(--muted); }
+.reprint .notice { margin-top: 0.55rem; color: var(--stamp); }
+.article-body { font-family: var(--serif); font-size: 1.08rem; }
+.article-body p { margin: 0.9rem 0; }
+.article-body h2, .article-body h3, .article-body h4 { font-family: var(--serif); line-height: 1.3; }
+.article-body img { max-width: 100%; height: auto; }
+.article-body pre { overflow: auto; padding: 0.8rem 1rem; background: var(--paper-2); }
+.article-body blockquote { margin: 1rem 0; padding-left: 0.9rem; border-left: 3px solid var(--stamp); }
+.article-body table { width: 100%; border-collapse: collapse; }
+.article-body th, .article-body td { border: 1px solid var(--line); padding: 0.35rem 0.5rem; vertical-align: top; }
+.origin { font-size: 0.92em; }
 @media (max-width: 640px) {
   body { font-size: 16px; }
   .mast-row { flex-direction: column; align-items: flex-start; }

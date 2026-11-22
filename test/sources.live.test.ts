@@ -61,12 +61,14 @@ describe("live collect and render", () => {
     expect(html).toContain("原文链接");
     expect(html).toContain("著作权归原作者所有");
 
-    const match = html.match(/href="\/item\/(\d+)"/);
+    const match = html.match(/href="\/a\/(\d+)"/);
     expect(match?.[1]).toBeTruthy();
-    const detail = await handle(new Request(`https://nomad.evanzhang.cloud/item/${match?.[1]}`), env);
+    const detail = await handle(new Request(`https://nomad.evanzhang.cloud/a/${match?.[1]}`), env);
     const detailHtml = await detail.text();
     expect(detail.status).toBe(200);
-    expect(detailHtml).toMatch(/来源：<strong>[^<]+<\/strong> · 作者：<strong>[^<]+<\/strong> · <a href="https?:\/\/[^"]+"[^>]*>原文链接<\/a>/);
+    expect(detailHtml).toContain("来源站点");
+    expect(detailHtml).toContain("原文链接");
+    expect(detailHtml).toContain("版权归原作者所有");
     expect(detailHtml).toContain("阅读原文");
 
     const rss = await handle(new Request("https://nomad.evanzhang.cloud/rss.xml"), env);

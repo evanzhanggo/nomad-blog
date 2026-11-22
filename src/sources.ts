@@ -45,6 +45,7 @@ function qualify(entries: ReturnType<typeof parseFeed>, spec: FeedSpec): Draft[]
           sourceName: spec.name,
           author: entry.author,
           publishedAt: entry.publishedAt,
+          contentHtml: entry.contentHtml,
         });
         return spec.tag && draft ? withTag(draft, spec.tag) : draft;
       })

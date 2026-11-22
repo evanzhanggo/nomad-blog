@@ -1,5 +1,5 @@
 export const USER_AGENT =
-  "NomadBlogBot/1.0 (+https://nomad.evanzhang.cloud; excerpts-only; attribution)";
+  "NomadBlogBot/1.0 (+https://nomad.evanzhang.cloud; attribution)";
 
 export const EXCERPT_MAX = 300;
 

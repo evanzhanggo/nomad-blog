@@ -38,7 +38,26 @@ function displayAuthor(author: string | null): string {
 }
 
 function attribution(item: ItemRow): string {
-  return `来源：<strong>${esc(item.source_name)}</strong> · 作者：<strong>${esc(displayAuthor(item.author))}</strong> · <a href="${safeHref(item.canonical_url)}" target="_blank" rel="noopener noreferrer">原文链接</a>`;
+  return `来源：<strong>${esc(item.source_name)}</strong> · 作者：<strong>${esc(displayAuthor(item.author))}</strong> · <a class="origin" href="${safeHref(item.canonical_url)}" target="_blank" rel="noopener noreferrer">原文</a>`;
+}
+
+function reprint(item: ItemRow): string {
+  const author = item.author?.trim()
+    ? `<p><span>作者</span>${esc(item.author)}</p>`
+    : "";
+  return `<aside class="reprint">
+    <p><span>原文标题</span>${esc(item.title)}</p>
+    ${author}
+    <p><span>来源站点</span>${esc(item.source_name)}</p>
+    <p><span>原文链接</span><a href="${safeHref(item.canonical_url)}" target="_blank" rel="noopener noreferrer">${esc(item.canonical_url)}</a></p>
+    <p class="notice">本文转载自${esc(item.source_name)}，版权归原作者所有，如有侵权请联系删除</p>
+  </aside>`;
+}
+
+function safeBody(html: string | null | undefined): string | null {
+  if (!html) return null;
+  if (/<\s*script\b|<\/script|on\w+\s*=|javascript:/i.test(html)) return null;
+  return html;
 }
 
 function tagLinks(item: ItemRow, source: string): string {
@@ -98,13 +117,13 @@ function layout(options: {
         <a href="/rss.xml">RSS</a>
       </nav>
     </div>
-    <p class="deck">每天从公开网页整理中文的数字游民、远程工作、签证和旅居内容。这里只放标题、三百字以内的摘要，以及回到原文的链接。</p>
+    <p class="deck">每天整理中文数字游民指南。点标题读全文，文首和文末都写着出处；列表上优先显示 AI 摘要。</p>
   </div>
 </header>
 <main id="content" class="wrap">${options.body}</main>
 <footer class="site">
   <div class="wrap">
-    <p>本站只整理公开来源的标题、短摘要与链接，不转载全文。内容著作权归原作者所有。</p>
+    <p>正文转载自公开来源，文首和文末保留标题、作者、来源和原文链接。内容著作权归原作者所有，如有侵权请联系删除。</p>
     <p>游牧手记 · <a href="/rss.xml">订阅 RSS</a> · <a href="/about">关于这份日更</a></p>
   </div>
 </footer>
@@ -125,8 +144,8 @@ function classicsBlock(view: HomeView): string {
       (item, index) => `<article class="item">
       <div class="index">${String(index + 1).padStart(2, "0")}</div>
       <div>
-        <h3><a href="/item/${item.id}">${esc(item.title)}</a></h3>
-        ${item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
+        <h3><a href="/a/${item.id}">${esc(item.title)}</a></h3>
+        ${item.ai_summary ? `<p class="excerpt"><span class="ai-mark">AI 摘要</span> ${esc(item.ai_summary)}</p>` : item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
         <p class="attr">${attribution(item)}</p>
         <p class="submeta">${esc([TOPICS.find((topic) => topic.id === item.topic)?.label, item.quality_score ? `${item.quality_score} 分` : ""].filter(Boolean).join(" · "))}</p>
       </div>
@@ -176,8 +195,8 @@ function itemCard(item: ItemRow, index: number, sourceFilter: string): string {
   return `<article class="item">
     <div class="index">${String(index).padStart(2, "0")}</div>
     <div>
-      <h3><a href="/item/${item.id}">${esc(item.title)}</a></h3>
-      ${item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
+      <h3><a href="/a/${item.id}">${esc(item.title)}</a></h3>
+      ${item.ai_summary ? `<p class="excerpt"><span class="ai-mark">AI 摘要</span> ${esc(item.ai_summary)}</p>` : item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
       <p class="attr">${attribution(item)}</p>
       ${tagLinks(item, sourceFilter)}
       <p class="submeta">${esc(bits.join(" · "))}</p>
@@ -237,7 +256,7 @@ export function renderHome(view: HomeView, origin: string): string {
     ${view.total > PAGE_SIZE ? `<nav class="pager" aria-label="分页">${prev}<span>第 ${view.page} / ${pages} 页</span>${next}</nav>` : ""}`;
   return layout({
     title: "最新",
-    description: "数字游民、远程工作、签证与旅居的每日选读。只收录标题、短摘要和原文链接。",
+    description: "数字游民、远程工作、签证与旅居的每日选读。列表给出 AI 摘要，详情页是带来源的全文。",
     path: pageHref(view.page, view.source, view.tag, view.topic),
     body,
     origin,
@@ -254,21 +273,31 @@ export function renderItem(item: ItemRow, origin: string): string {
   const discussion = item.discussion_url
     ? `<p class="discuss"><a href="${safeHref(item.discussion_url)}" target="_blank" rel="noopener noreferrer">查看讨论线程</a></p>`
     : "";
+  const full = safeBody(item.content_html);
+  const aiBox = item.ai_summary
+    ? `<p class="ai-summary"><strong>AI 摘要</strong> ${esc(item.ai_summary)}</p>`
+    : "";
+  const article = full
+    ? `<div class="article-body">${full}</div>`
+    : `<p class="note">${item.excerpt ? "全文还没有抓到，下面先放原来的摘要。" : "这条来源暂时没有可用的正文。"}</p>${
+        item.excerpt ? `<blockquote class="quote">${esc(item.excerpt)}</blockquote>` : ""
+      }`;
   const body = `<article class="post">
     <p class="kicker">${esc(item.language === "zh" ? "中文" : "EN")}</p>
     <h1>${esc(item.title)}</h1>
-    <p class="attr">${attribution(item)}</p>
-    ${item.excerpt ? `<blockquote class="quote">${esc(item.excerpt)}</blockquote>` : `<p class="note">这条来源没有提供可用的摘要。</p>`}
-    <p class="note">上面是来源站点公开描述里的短摘要，最多 300 字，不是正文。请从原文链接继续读。</p>
+    ${aiBox}
+    ${reprint(item)}
+    ${article}
     <p><a class="read" href="${safeHref(item.canonical_url)}" target="_blank" rel="noopener noreferrer">阅读原文</a></p>
     ${discussion}
     ${tagLinks(item, "")}
     <p class="submeta">${esc(bits.join(" · "))}</p>
+    ${reprint(item)}
   </article>`;
   return layout({
     title: item.title,
-    description: item.excerpt || `${item.source_name} 的一条收录，链回原文。`,
-    path: `/item/${item.id}`,
+    description: item.ai_summary || item.excerpt || `${item.source_name} 的一篇转载。`,
+    path: `/a/${item.id}`,
     body,
     origin,
   });
@@ -281,26 +310,26 @@ export function renderAbout(origin: string): string {
   ).join("");
   const body = `<article class="about">
     <h1>关于游牧手记</h1>
-    <p>这是给中文读者的一份数字游民日更。它不生产原创长文，只收录标题以中文为主的公开内容，留下标题、短摘要和出处。</p>
+    <p>这是给中文读者的一份数字游民日更。它收录标题以中文为主的公开文章，在本站展示全文，并在文首文末写明出处。</p>
     <h2>每天怎么更新</h2>
     <p>同一个 Cloudflare Worker 在北京时间 08:00 和 22:00 各跑一次采集。两次都写进当天的分组。每条都要先对上海外开卡、手机卡、税号、AI 订阅、签证、远程方法或券商，并且分数够高；招聘和闲聊不会进来。每次最多新增 16 条。</p>
     <h2>页面上有什么</h2>
     <ul>
       <li>首页按收录日分组，可以按来源和主题筛选，也可以翻页。</li>
-      <li>每条记录有自己的页面，上面有来源、作者和原文链接。</li>
+      <li>每篇文章在 <code>/a/编号</code>，正文上方有 AI 摘要，开头和结尾都有原文标题、作者、来源和原文链接。</li>
       <li><a href="/rss.xml">/rss.xml</a> 是这份日更自己的订阅源。</li>
     </ul>
-    <h2>我们不保存什么</h2>
-    <p>不抓正文，也不把全文放进数据库。摘要来自来源自己的描述、简介或帖子开头，截到 300 个字符。作者未知时会写成「未知」，不会把转帖的人说成原作者。</p>
+    <h2>正文和摘要</h2>
+    <p>采集时优先使用订阅源里的全文，没有的话再打开原文页提取正文。脚本、样式和跟踪参数会被去掉。抓不到正文时仍显示原来的短摘要。抓到正文后，Workers AI 会写两到三句简体中文摘要；模型失败时列表继续用 RSS 摘要。作者未知时列表写成「未知」，不会把转帖的人说成原作者。</p>
     <h2>现在的来源</h2>
     <ul>${sources}</ul>
     <p>英文来源已经拿掉。V2EX 的官方接口从 Cloudflare 的地址访问会返回 403，所以也不直接抓。标题里汉字不够多的条目会被跳过。</p>
     <h2>版权</h2>
-    <p>标题、摘要和链接只为了方便你决定要不要点回去。内容著作权归原作者所有。若要阅读，请使用每条记录上的原文链接。</p>
+    <p>本文转载自各来源站点，版权归原作者所有，如有侵权请联系删除。每篇文章的开头和结尾都重复了原文标题、来源和原文链接。</p>
   </article>`;
   return layout({
     title: "关于",
-    description: "游牧手记如何每天收集数字游民与远程工作的公开指南，以及它不转载全文的原因。",
+    description: "游牧手记如何每天收集数字游民与远程工作的公开指南，并在保留出处的前提下展示全文。",
     path: "/about",
     body,
     origin,
@@ -330,7 +359,7 @@ export function renderError(origin: string): string {
 export function renderRss(items: ItemRow[], origin: string): string {
   const entries = items
     .map((item) => {
-      const link = `${origin}/item/${item.id}`;
+      const link = `${origin}/a/${item.id}`;
       const author = displayAuthor(item.author);
       const description = `${item.excerpt || "来源没有提供摘要。"} 来源：${item.source_name}。作者：${author}。原文：${item.canonical_url}`;
       const when = item.published_at || item.collected_at;
@@ -351,7 +380,7 @@ export function renderRss(items: ItemRow[], origin: string): string {
   <title>游牧手记</title>
   <link>${xmlEsc(origin)}/</link>
   <atom:link href="${xmlEsc(origin)}/rss.xml" rel="self" type="application/rss+xml"/>
-  <description>每天整理数字游民、远程工作、签证与旅居的公开指南。只有标题、短摘要和原文链接，不转载全文。</description>
+  <description>每天整理数字游民、远程工作、签证与旅居的公开指南。站内文章保留出处并链回原文。</description>
   <language>zh-CN</language>
   <lastBuildDate>${xmlEsc(new Date().toUTCString())}</lastBuildDate>
   ${entries}

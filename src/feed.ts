@@ -6,6 +6,8 @@ export interface FeedEntry {
   excerpt: string;
   author: string | null;
   publishedAt: string | null;
+  /** Raw `content:encoded` or Atom `content`, when the feed has one. */
+  contentHtml: string | null;
 }
 
 function inner(block: string, names: string[]): string {
@@ -50,13 +52,15 @@ function entryFrom(block: string, link: string): FeedEntry | null {
   const publishedAt = toIso(
     plainTitle(inner(block, ["pubDate", "published", "updated", "dc:date", "date"])),
   );
-  const rawExcerpt = inner(block, ["description", "summary"]) || inner(block, ["content:encoded", "content"]);
+  const encoded = inner(block, ["content:encoded"]) || inner(block, ["content"]);
+  const rawExcerpt = inner(block, ["description", "summary"]) || encoded;
   return {
     url,
     title: title.slice(0, 300),
     excerpt: excerptOf(rawExcerpt, title),
     author,
     publishedAt,
+    contentHtml: encoded || null,
   };
 }
 

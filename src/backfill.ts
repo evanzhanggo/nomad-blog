@@ -1,4 +1,5 @@
 import classics from "../data/classics.json";
+import { storeAndFetchContent } from "./fulltext";
 import { FEEDS, qualifyFeed } from "./sources";
 import { buildDraft } from "./item";
 import { TOPICS } from "./score";
@@ -45,6 +46,7 @@ async function draftFromSeed(seed: Seed): Promise<Draft | null> {
     sourceId: seed.sourceId,
     sourceName: seed.sourceName,
     author: seed.author,
+    contentHtml: html,
   });
 }
 
@@ -133,6 +135,7 @@ export async function runBackfill(env: Env): Promise<BackfillReport> {
   }
 
   const saved = await insertClassics(env, pool);
+  if (pool.length) await storeAndFetchContent(env, pool, 0, 0);
   for (const item of pool) byTopic[item.topic] = (byTopic[item.topic] ?? 0) + 1;
   return {
     ok: pool.length > 0,

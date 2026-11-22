@@ -78,7 +78,7 @@ var classics_default = [
 ];
 
 // src/text.ts
-var USER_AGENT = "NomadBlogBot/1.0 (+https://nomad.evanzhang.cloud; excerpts-only; attribution)";
+var USER_AGENT = "NomadBlogBot/1.0 (+https://nomad.evanzhang.cloud; attribution)";
 var EXCERPT_MAX = 300;
 var TRACKING_PARAMS = /* @__PURE__ */ new Set([
   "utm_source",
@@ -253,6 +253,513 @@ async function fetchText(url, timeoutMs = 12e3) {
 }
 __name(fetchText, "fetchText");
 
+// src/content.ts
+var CONTENT_MAX_BYTES = 2e5;
+var ALLOWED = /* @__PURE__ */ new Set([
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "ul",
+  "ol",
+  "li",
+  "blockquote",
+  "pre",
+  "code",
+  "a",
+  "img",
+  "strong",
+  "em",
+  "br",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td"
+]);
+var DROP = /* @__PURE__ */ new Set([
+  "script",
+  "style",
+  "iframe",
+  "object",
+  "embed",
+  "noscript",
+  "svg",
+  "math",
+  "form",
+  "textarea",
+  "template",
+  "noframes",
+  "frameset",
+  "frame"
+]);
+var VOID = /* @__PURE__ */ new Set(["br", "img"]);
+var RENAME = { b: "strong", i: "em" };
+function visibleText(html2) {
+  return stripTags(html2).replace(/\s+/g, " ").trim();
+}
+__name(visibleText, "visibleText");
+function isFullArticle(html2) {
+  const text = visibleText(html2);
+  if (text.length >= 800) return true;
+  const blocks = html2.match(/<(p|h2|h3|li|blockquote|pre|br)\b/gi)?.length ?? 0;
+  return text.length >= 180 && blocks >= 2;
+}
+__name(isFullArticle, "isFullArticle");
+function hostOf(pageUrl) {
+  try {
+    return new URL(pageUrl).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+__name(hostOf, "hostOf");
+function attrValue(attrs, name) {
+  const match = attrs.match(new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i"));
+  return (match?.[2] ?? match?.[3] ?? match?.[4] ?? "").trim();
+}
+__name(attrValue, "attrValue");
+function classHas(attrs, token) {
+  return attrValue(attrs, "class").split(/\s+/).includes(token);
+}
+__name(classHas, "classHas");
+function innerFrom(html2, start) {
+  const open = html2.slice(start).match(/^<([a-zA-Z0-9]+)\b[^>]*>/);
+  if (!open) return null;
+  const name = open[1].toLowerCase();
+  if (VOID.has(name)) return "";
+  const from = start + open[0].length;
+  const re = new RegExp(`<(/?)${name}\\b[^>]*>`, "gi");
+  re.lastIndex = from;
+  let depth = 1;
+  let match;
+  while (match = re.exec(html2)) {
+    const closing = Boolean(match[1]);
+    const selfClosing = !closing && /\/>\s*$/.test(match[0]);
+    if (closing) depth -= 1;
+    else if (!selfClosing) depth += 1;
+    if (depth === 0) return html2.slice(from, match.index);
+  }
+  return html2.slice(from, from + 25e4);
+}
+__name(innerFrom, "innerFrom");
+function findTag(html2, predicate) {
+  const re = /<([a-zA-Z0-9]+)\b([^>]*)>/g;
+  let match;
+  while (match = re.exec(html2)) {
+    if (!predicate(match[1].toLowerCase(), match[2] ?? "")) continue;
+    return innerFrom(html2, match.index);
+  }
+  return null;
+}
+__name(findTag, "findTag");
+function bestRegion(html2) {
+  const article = findTag(html2, (name) => name === "article");
+  if (article && visibleText(article).length >= 180) return article;
+  const main = findTag(html2, (name) => name === "main");
+  if (main && visibleText(main).length >= 180) return main;
+  const re = /<(div|section|article|main)\b([^>]*)>/gi;
+  let match;
+  let best = null;
+  let bestLength = 0;
+  let seen = 0;
+  while ((match = re.exec(html2)) && seen < 40) {
+    const attrs = match[2] ?? "";
+    const name = match[1].toLowerCase();
+    const interesting = name === "article" || name === "main" || /content|article|post|entry|rich|markdown|body/i.test(attrs);
+    if (!interesting) continue;
+    seen += 1;
+    const inner2 = innerFrom(html2, match.index);
+    if (!inner2) continue;
+    const length = visibleText(inner2).length;
+    if (length > bestLength) {
+      best = inner2;
+      bestLength = length;
+    }
+  }
+  return best;
+}
+__name(bestRegion, "bestRegion");
+function pickRegion(html2, pageUrl) {
+  const host = hostOf(pageUrl);
+  if (host === "mp.weixin.qq.com") {
+    return findTag(html2, (_name, attrs) => attrValue(attrs, "id") === "js_content") ?? html2;
+  }
+  if (host === "sspai.com" || host.endsWith(".sspai.com")) {
+    return findTag(html2, (_name, attrs) => attrValue(attrs, "id") === "article-content") ?? findTag(html2, (_name, attrs) => classHas(attrs, "article-body")) ?? findTag(html2, (name, attrs) => name === "article" || classHas(attrs, "content")) ?? html2;
+  }
+  if (host === "zhuanlan.zhihu.com") {
+    return findTag(html2, (_name, attrs) => classHas(attrs, "Post-RichText")) ?? findTag(html2, (_name, attrs) => classHas(attrs, "RichText")) ?? html2;
+  }
+  return bestRegion(html2) ?? html2;
+}
+__name(pickRegion, "pickRegion");
+function absoluteUrl(value, base) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith("#")) return null;
+  try {
+    const url = new URL(trimmed, base);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+__name(absoluteUrl, "absoluteUrl");
+function escapeText(value) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+__name(escapeText, "escapeText");
+function escapeAttr(value) {
+  return escapeText(value).replace(/"/g, "&quot;");
+}
+__name(escapeAttr, "escapeAttr");
+function parseTag(raw) {
+  const match = raw.match(/^<(\/?)([a-zA-Z0-9]+)\b([^>]*)>$/);
+  if (!match) return null;
+  const name = RENAME[match[2].toLowerCase()] ?? match[2].toLowerCase();
+  const attrs = match[3] ?? "";
+  const selfClosing = Boolean(match[1]) ? false : /\/>\s*$/.test(raw) || VOID.has(name);
+  return { kind: match[1] ? "end" : "start", name, attrs, selfClosing };
+}
+__name(parseTag, "parseTag");
+function allowedAttrs(name, attrs, base) {
+  if (name === "a") {
+    const href = absoluteUrl(attrValue(attrs, "href"), base);
+    if (!href) return null;
+    return ` href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer"`;
+  }
+  if (name === "img") {
+    const src = absoluteUrl(attrValue(attrs, "src") || attrValue(attrs, "data-src"), base);
+    if (!src) return null;
+    const alt = attrValue(attrs, "alt");
+    return ` src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" loading="lazy" referrerpolicy="no-referrer"`;
+  }
+  if (name === "th" || name === "td") {
+    const parts = [];
+    for (const key of ["colspan", "rowspan"]) {
+      const value = attrValue(attrs, key);
+      if (/^[1-9]\d?$/.test(value)) parts.push(` ${key}="${value}"`);
+    }
+    return parts.join("");
+  }
+  return "";
+}
+__name(allowedAttrs, "allowedAttrs");
+function sanitizeHtml(input, baseUrl) {
+  const source = decodeXml(input).replace(/<head\b[\s\S]*?<\/head>/gi, "").replace(/<!--[\s\S]*?-->/g, "");
+  const parts = [];
+  const stack = [];
+  let bytes = 0;
+  let dropDepth = 0;
+  let dropTag = "";
+  let inPre = 0;
+  let stopped = false;
+  const push = /* @__PURE__ */ __name((chunk) => {
+    const size = new TextEncoder().encode(chunk).length;
+    if (bytes + size > CONTENT_MAX_BYTES) return false;
+    bytes += size;
+    parts.push(chunk);
+    return true;
+  }, "push");
+  const closeTag = /* @__PURE__ */ __name((open) => {
+    if (open === "pre") inPre = Math.max(0, inPre - 1);
+    parts.push(`</${open}>`);
+  }, "closeTag");
+  const closeThrough = /* @__PURE__ */ __name((name) => {
+    if (name == null) {
+      while (stack.length) {
+        const open = stack.pop();
+        if (open) closeTag(open);
+      }
+      return;
+    }
+    const index = stack.lastIndexOf(name);
+    if (index < 0) return;
+    while (stack.length > index) {
+      const open = stack.pop();
+      if (open) closeTag(open);
+    }
+  }, "closeThrough");
+  const re = /<!--[\s\S]*?-->|<\/?[a-zA-Z][^>]*>|[^<]+/g;
+  let match;
+  while (!stopped && (match = re.exec(source))) {
+    const token = match[0];
+    if (token.startsWith("<")) {
+      const tag = parseTag(token.replace(/\s+$/g, ""));
+      if (!tag) continue;
+      if (dropDepth > 0) {
+        if (tag.kind === "start" && tag.name === dropTag && !tag.selfClosing) dropDepth += 1;
+        else if (tag.kind === "end" && tag.name === dropTag) dropDepth -= 1;
+        continue;
+      }
+      if (tag.kind === "start" && DROP.has(tag.name)) {
+        if (!tag.selfClosing) {
+          dropDepth = 1;
+          dropTag = tag.name;
+        }
+        continue;
+      }
+      if (!ALLOWED.has(tag.name)) continue;
+      if (tag.kind === "end") {
+        closeThrough(tag.name);
+        continue;
+      }
+      const rendered = allowedAttrs(tag.name, tag.attrs, baseUrl);
+      if (rendered == null) continue;
+      if (!push(`<${tag.name}${rendered}>`)) {
+        stopped = true;
+        break;
+      }
+      if (!tag.selfClosing && !VOID.has(tag.name)) {
+        stack.push(tag.name);
+        if (tag.name === "pre") inPre += 1;
+      }
+      continue;
+    }
+    if (dropDepth > 0) continue;
+    const text = inPre > 0 ? token : token.replace(/\s+/g, " ");
+    if (!text || text === " ") {
+      if (text === " " && parts.length) push(" ");
+      continue;
+    }
+    if (!push(escapeText(text))) stopped = true;
+  }
+  closeThrough(null);
+  return parts.join("").replace(/(?:<p>\s*<\/p>)+/g, "").trim();
+}
+__name(sanitizeHtml, "sanitizeHtml");
+function articleHtmlFromSource(raw, pageUrl) {
+  if (!raw.trim()) return null;
+  const documentLike = /<html[\s>]|<body[\s>]/i.test(raw);
+  const special = /mp\.weixin\.qq\.com|sspai\.com|zhuanlan\.zhihu\.com/i.test(pageUrl);
+  const region = documentLike || special ? pickRegion(raw, pageUrl) : raw;
+  const clean = sanitizeHtml(region, pageUrl);
+  return isFullArticle(clean) ? clean : null;
+}
+__name(articleHtmlFromSource, "articleHtmlFromSource");
+
+// src/summary.ts
+var SUMMARY_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
+var INPUT_CHARS = 6e3;
+function summaryInput(title, contentHtml, excerpt) {
+  const body = contentHtml ? visibleText(contentHtml) : excerpt;
+  const clipped = Array.from(body).slice(0, INPUT_CHARS).join("");
+  return `\u6807\u9898\uFF1A${title}
+
+\u6B63\u6587\uFF1A${clipped}`;
+}
+__name(summaryInput, "summaryInput");
+function readModelText(result) {
+  if (typeof result === "string") return result;
+  if (!result || typeof result !== "object") return "";
+  const record = result;
+  if (typeof record.response === "string") return record.response;
+  const choices = record.choices;
+  if (!Array.isArray(choices) || !choices.length) return "";
+  const message = choices[0].message;
+  return typeof message?.content === "string" ? message.content : "";
+}
+__name(readModelText, "readModelText");
+function cleanSummary(raw) {
+  let text = raw.replace(/<think>[\s\S]*?<\/think>/gi, " ");
+  text = text.replace(/^[\s\S]*?<\/think>/i, " ");
+  text = plainTitle(text);
+  text = text.replace(/^(摘要|总结|AI摘要|简体中文摘要|以下是(?:摘要|总结)?)[:：]\s*/i, "");
+  text = text.replace(/^["“「]|["”」]$/g, "").trim();
+  text = text.replace(/\s+/g, " ").trim();
+  if (text.length < 20 || text.startsWith("\u6807\u9898\uFF1A")) return null;
+  const chars = Array.from(text);
+  if (chars.length > 160) {
+    const cut = chars.slice(0, 150).join("");
+    const end = Math.max(cut.lastIndexOf("\u3002"), cut.lastIndexOf("\uFF01"), cut.lastIndexOf("\uFF1F"));
+    text = (end >= 40 ? cut.slice(0, end + 1) : `${cut.trimEnd()}\u2026`).trim();
+  }
+  return text || null;
+}
+__name(cleanSummary, "cleanSummary");
+async function summarizeArticle(ai, title, contentHtml, excerpt) {
+  if (!ai) return null;
+  const source = summaryInput(title, contentHtml, excerpt);
+  if (Array.from(source).length < 40) return null;
+  try {
+    const result = await ai.run(SUMMARY_MODEL, {
+      messages: [
+        {
+          role: "system",
+          content: "\u4F60\u662F\u4E2D\u6587\u7F16\u8F91\u3002\u53EA\u8F93\u51FA\u4E24\u5230\u4E09\u53E5\u7B80\u4F53\u4E2D\u6587\u6458\u8981\uFF0C\u5927\u7EA680\u5230150\u4E2A\u5B57\u3002\u4E0D\u8981\u6807\u9898\u3001\u524D\u8A00\u3001\u7F16\u53F7\u3001\u5F15\u53F7\u6216\u82F1\u6587\u8BF4\u660E\u3002"
+        },
+        { role: "user", content: source }
+      ],
+      max_tokens: 256,
+      temperature: 0.2
+    });
+    return cleanSummary(readModelText(result));
+  } catch (error) {
+    console.error("summary failed", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+__name(summarizeArticle, "summarizeArticle");
+
+// src/fulltext.ts
+var CONTENT_FETCH_LIMIT = 4;
+var SUMMARY_LIMIT = 4;
+var ADMIN_BATCH_DEFAULT = 4;
+var ADMIN_BATCH_MAX = 8;
+var RETRY_MS = 12 * 60 * 60 * 1e3;
+function parseBatchLimit(raw) {
+  if (raw == null || raw === "" || !/^\d+$/.test(raw)) return ADMIN_BATCH_DEFAULT;
+  const value = Number(raw);
+  if (value < 1) return ADMIN_BATCH_DEFAULT;
+  return Math.min(value, ADMIN_BATCH_MAX);
+}
+__name(parseBatchLimit, "parseBatchLimit");
+async function fetchPage(url, timeoutMs = 8e3) {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "user-agent": USER_AGENT,
+        accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5"
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!response.ok) return null;
+    const type = response.headers.get("content-type") ?? "";
+    if (type && !/html|xml|text\/plain/i.test(type)) return null;
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > 2e6) return null;
+    return new TextDecoder("utf-8").decode(buffer);
+  } catch {
+    return null;
+  }
+}
+__name(fetchPage, "fetchPage");
+async function writeContent(db, url, html2, at) {
+  await db.prepare(
+    `UPDATE items
+       SET content_html = ?, content_fetched_at = ?
+       WHERE canonical_url = ? AND content_html IS NULL`
+  ).bind(html2, at, url).run();
+}
+__name(writeContent, "writeContent");
+async function writeSummary(db, id, summary, at) {
+  await db.prepare(
+    `UPDATE items
+       SET ai_summary = ?, ai_summary_at = ?
+       WHERE id = ? AND ai_summary IS NULL`
+  ).bind(summary, at, id).run();
+}
+__name(writeSummary, "writeSummary");
+async function summarizeRow(env, row, at) {
+  if (!env.AI) return false;
+  const summary = await summarizeArticle(env.AI, row.title, row.content_html, row.excerpt ?? "");
+  await writeSummary(env.DB, row.id, summary, at);
+  return summary != null;
+}
+__name(summarizeRow, "summarizeRow");
+async function storeAndFetchContent(env, items, fetchLimit, summaryLimit) {
+  let fromFeed = 0;
+  let fetched = 0;
+  let failed = 0;
+  let summarized = 0;
+  let fetches = 0;
+  let summaries = 0;
+  const at = (/* @__PURE__ */ new Date()).toISOString();
+  for (const item of items) {
+    try {
+      let html2 = item.feedHtml ? articleHtmlFromSource(item.feedHtml, item.canonicalUrl) : null;
+      let attempted = Boolean(html2);
+      if (html2) fromFeed += 1;
+      if (!html2 && fetches < fetchLimit) {
+        fetches += 1;
+        attempted = true;
+        const page = await fetchPage(item.canonicalUrl);
+        html2 = page ? articleHtmlFromSource(page, item.canonicalUrl) : null;
+        if (html2) fetched += 1;
+        else failed += 1;
+      }
+      if (!attempted) continue;
+      await writeContent(env.DB, item.canonicalUrl, html2, at);
+      if (!html2 || summaries >= summaryLimit || !env.AI) continue;
+      const row = await env.DB.prepare(
+        `SELECT id, title, excerpt, content_html FROM items WHERE canonical_url = ?`
+      ).bind(item.canonicalUrl).first();
+      if (!row) continue;
+      summaries += 1;
+      if (await summarizeRow(env, row, at)) summarized += 1;
+    } catch (error) {
+      console.error("content attach failed", error instanceof Error ? error.message : error);
+      failed += 1;
+    }
+  }
+  return { fromFeed, fetched, failed, summarized };
+}
+__name(storeAndFetchContent, "storeAndFetchContent");
+async function fillMissingContent(env, limit) {
+  const cutoff = new Date(Date.now() - RETRY_MS).toISOString();
+  const rows = await env.DB.prepare(
+    `SELECT id, canonical_url, title, excerpt FROM items
+     WHERE content_html IS NULL
+       AND (content_fetched_at IS NULL OR content_fetched_at < ?)
+     ORDER BY content_fetched_at IS NOT NULL, id
+     LIMIT ?`
+  ).bind(cutoff, limit).all();
+  const pending = rows.results ?? [];
+  let filled = 0;
+  let failed = 0;
+  let summarized = 0;
+  const at = (/* @__PURE__ */ new Date()).toISOString();
+  for (const row of pending) {
+    try {
+      const page = await fetchPage(row.canonical_url);
+      const html2 = page ? articleHtmlFromSource(page, row.canonical_url) : null;
+      await writeContent(env.DB, row.canonical_url, html2, at);
+      if (!html2) {
+        failed += 1;
+        continue;
+      }
+      filled += 1;
+      if (!env.AI) continue;
+      if (await summarizeRow(env, { ...row, content_html: html2 }, at)) summarized += 1;
+    } catch (error) {
+      console.error("fetch-content failed", error instanceof Error ? error.message : error);
+      failed += 1;
+    }
+  }
+  return { limit, scanned: pending.length, filled, failed, summarized };
+}
+__name(fillMissingContent, "fillMissingContent");
+async function fillMissingSummaries(env, limit) {
+  const cutoff = new Date(Date.now() - RETRY_MS).toISOString();
+  const rows = await env.DB.prepare(
+    `SELECT id, title, excerpt, content_html FROM items
+     WHERE ai_summary IS NULL
+       AND (ai_summary_at IS NULL OR ai_summary_at < ?)
+       AND (content_html IS NOT NULL OR excerpt != '')
+     ORDER BY content_html IS NULL, ai_summary_at IS NOT NULL, id
+     LIMIT ?`
+  ).bind(cutoff, limit).all();
+  const pending = rows.results ?? [];
+  let summarized = 0;
+  let failed = 0;
+  const at = (/* @__PURE__ */ new Date()).toISOString();
+  for (const row of pending) {
+    try {
+      if (await summarizeRow(env, row, at)) summarized += 1;
+      else failed += 1;
+    } catch (error) {
+      console.error("summarize failed", error instanceof Error ? error.message : error);
+      failed += 1;
+    }
+  }
+  return { limit, scanned: pending.length, summarized, failed };
+}
+__name(fillMissingSummaries, "fillMissingSummaries");
+
 // src/feed.ts
 function inner(block, names) {
   for (const name of names) {
@@ -296,13 +803,15 @@ function entryFrom(block, link) {
   const publishedAt = toIso(
     plainTitle(inner(block, ["pubDate", "published", "updated", "dc:date", "date"]))
   );
-  const rawExcerpt = inner(block, ["description", "summary"]) || inner(block, ["content:encoded", "content"]);
+  const encoded = inner(block, ["content:encoded"]) || inner(block, ["content"]);
+  const rawExcerpt = inner(block, ["description", "summary"]) || encoded;
   return {
     url,
     title: title.slice(0, 300),
     excerpt: excerptOf(rawExcerpt, title),
     author,
-    publishedAt
+    publishedAt,
+    contentHtml: encoded || null
   };
 }
 __name(entryFrom, "entryFrom");
@@ -569,7 +1078,8 @@ function buildDraft(input) {
     tags: tagString(title, excerpt),
     language: "zh",
     topic: quality.topic,
-    qualityScore: quality.score
+    qualityScore: quality.score,
+    feedHtml: input.contentHtml?.trim() ? input.contentHtml : null
   };
 }
 __name(buildDraft, "buildDraft");
@@ -621,7 +1131,8 @@ function qualify(entries, spec) {
         sourceId: spec.id,
         sourceName: spec.name,
         author: entry.author,
-        publishedAt: entry.publishedAt
+        publishedAt: entry.publishedAt,
+        contentHtml: entry.contentHtml
       });
       return spec.tag && draft ? withTag(draft, spec.tag) : draft;
     }).filter((item) => item !== null)
@@ -662,7 +1173,8 @@ async function draftFromSeed(seed) {
     excerpt: page.excerpt,
     sourceId: seed.sourceId,
     sourceName: seed.sourceName,
-    author: seed.author
+    author: seed.author,
+    contentHtml: html2
   });
 }
 __name(draftFromSeed, "draftFromSeed");
@@ -748,6 +1260,7 @@ async function runBackfill(env) {
     }
   }
   const saved = await insertClassics(env, pool);
+  if (pool.length) await storeAndFetchContent(env, pool, 0, 0);
   for (const item of pool) byTopic[item.topic] = (byTopic[item.topic] ?? 0) + 1;
   return {
     ok: pool.length > 0,
@@ -844,6 +1357,7 @@ async function runCollect(env, trigger) {
   const { picked, duplicates, capped } = selectFresh(pool, existing, RUN_LIMIT);
   const collectedAt = (/* @__PURE__ */ new Date()).toISOString();
   let inserted = 0;
+  let fresh = [];
   if (picked.length) {
     const results = await env.DB.batch(
       picked.map(
@@ -874,6 +1388,10 @@ async function runCollect(env, trigger) {
       )
     );
     inserted = results.reduce((sum, result) => sum + (result.meta?.changes ?? 0), 0);
+    fresh = picked.filter((_, index) => (results[index]?.meta?.changes ?? 0) > 0);
+  }
+  if (fresh.length) {
+    await storeAndFetchContent(env, fresh, CONTENT_FETCH_LIMIT, SUMMARY_LIMIT);
   }
   const failed = loaded.filter((source) => !source.ok).length;
   const status = failed === 0 ? "ok" : failed === loaded.length ? "error" : "partial";
@@ -972,7 +1490,8 @@ function normalizePage(requested, total, pageSize = PAGE_SIZE) {
 __name(normalizePage, "normalizePage");
 var ITEM_COLUMNS = `id, canonical_url, title, excerpt, source_id, source_name, author,
   published_at, collected_at, popularity, popularity_label, tags, language, discussion_url,
-  topic, quality_score, section`;
+  topic, quality_score, section, ai_summary`;
+var DETAIL_COLUMNS = `${ITEM_COLUMNS}, content_html, content_fetched_at, ai_summary_at`;
 function whereClause(sourceId, tag) {
   const parts = ["section = 'daily'"];
   const binds = [];
@@ -1010,7 +1529,7 @@ async function listItems(db, sourceId, tag, page) {
 __name(listItems, "listItems");
 async function getItem(db, id) {
   return db.prepare(
-    `SELECT ${ITEM_COLUMNS}
+    `SELECT ${DETAIL_COLUMNS}
        FROM items WHERE id = ?`
   ).bind(id).first();
 }
@@ -1258,6 +1777,42 @@ footer.site p { margin: 0.3rem 0; }
 .about ul { padding-left: 1.2rem; }
 .about li { margin: 0.35rem 0; }
 code { font-size: 0.92em; }
+.ai-mark {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0.02rem 0.4rem;
+  border-radius: 999px;
+  background: var(--teal-soft);
+  color: var(--teal);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.ai-summary {
+  margin: 0.9rem 0 1.1rem;
+  padding: 0.85rem 1rem;
+  background: var(--teal-soft);
+  border-left: 3px solid var(--teal);
+}
+.ai-summary strong { display: block; margin-bottom: 0.25rem; font-size: 0.82rem; letter-spacing: 0.08em; }
+.reprint {
+  margin: 0.9rem 0;
+  padding: 0.75rem 0.9rem;
+  background: var(--paper-2);
+  border-left: 3px solid var(--teal);
+}
+.reprint p { margin: 0.2rem 0; }
+.reprint span { display: inline-block; min-width: 4.5rem; color: var(--muted); }
+.reprint .notice { margin-top: 0.55rem; color: var(--stamp); }
+.article-body { font-family: var(--serif); font-size: 1.08rem; }
+.article-body p { margin: 0.9rem 0; }
+.article-body h2, .article-body h3, .article-body h4 { font-family: var(--serif); line-height: 1.3; }
+.article-body img { max-width: 100%; height: auto; }
+.article-body pre { overflow: auto; padding: 0.8rem 1rem; background: var(--paper-2); }
+.article-body blockquote { margin: 1rem 0; padding-left: 0.9rem; border-left: 3px solid var(--stamp); }
+.article-body table { width: 100%; border-collapse: collapse; }
+.article-body th, .article-body td { border: 1px solid var(--line); padding: 0.35rem 0.5rem; vertical-align: top; }
+.origin { font-size: 0.92em; }
 @media (max-width: 640px) {
   body { font-size: 16px; }
   .mast-row { flex-direction: column; align-items: flex-start; }
@@ -1285,9 +1840,26 @@ function displayAuthor(author) {
 }
 __name(displayAuthor, "displayAuthor");
 function attribution(item) {
-  return `\u6765\u6E90\uFF1A<strong>${esc(item.source_name)}</strong> \xB7 \u4F5C\u8005\uFF1A<strong>${esc(displayAuthor(item.author))}</strong> \xB7 <a href="${safeHref(item.canonical_url)}" target="_blank" rel="noopener noreferrer">\u539F\u6587\u94FE\u63A5</a>`;
+  return `\u6765\u6E90\uFF1A<strong>${esc(item.source_name)}</strong> \xB7 \u4F5C\u8005\uFF1A<strong>${esc(displayAuthor(item.author))}</strong> \xB7 <a class="origin" href="${safeHref(item.canonical_url)}" target="_blank" rel="noopener noreferrer">\u539F\u6587</a>`;
 }
 __name(attribution, "attribution");
+function reprint(item) {
+  const author = item.author?.trim() ? `<p><span>\u4F5C\u8005</span>${esc(item.author)}</p>` : "";
+  return `<aside class="reprint">
+    <p><span>\u539F\u6587\u6807\u9898</span>${esc(item.title)}</p>
+    ${author}
+    <p><span>\u6765\u6E90\u7AD9\u70B9</span>${esc(item.source_name)}</p>
+    <p><span>\u539F\u6587\u94FE\u63A5</span><a href="${safeHref(item.canonical_url)}" target="_blank" rel="noopener noreferrer">${esc(item.canonical_url)}</a></p>
+    <p class="notice">\u672C\u6587\u8F6C\u8F7D\u81EA${esc(item.source_name)}\uFF0C\u7248\u6743\u5F52\u539F\u4F5C\u8005\u6240\u6709\uFF0C\u5982\u6709\u4FB5\u6743\u8BF7\u8054\u7CFB\u5220\u9664</p>
+  </aside>`;
+}
+__name(reprint, "reprint");
+function safeBody(html2) {
+  if (!html2) return null;
+  if (/<\s*script\b|<\/script|on\w+\s*=|javascript:/i.test(html2)) return null;
+  return html2;
+}
+__name(safeBody, "safeBody");
 function tagLinks(item, source) {
   const tags = parseTags(item.tags);
   if (!tags.length) return "";
@@ -1336,13 +1908,13 @@ function layout(options) {
         <a href="/rss.xml">RSS</a>
       </nav>
     </div>
-    <p class="deck">\u6BCF\u5929\u4ECE\u516C\u5F00\u7F51\u9875\u6574\u7406\u4E2D\u6587\u7684\u6570\u5B57\u6E38\u6C11\u3001\u8FDC\u7A0B\u5DE5\u4F5C\u3001\u7B7E\u8BC1\u548C\u65C5\u5C45\u5185\u5BB9\u3002\u8FD9\u91CC\u53EA\u653E\u6807\u9898\u3001\u4E09\u767E\u5B57\u4EE5\u5185\u7684\u6458\u8981\uFF0C\u4EE5\u53CA\u56DE\u5230\u539F\u6587\u7684\u94FE\u63A5\u3002</p>
+    <p class="deck">\u6BCF\u5929\u6574\u7406\u4E2D\u6587\u6570\u5B57\u6E38\u6C11\u6307\u5357\u3002\u70B9\u6807\u9898\u8BFB\u5168\u6587\uFF0C\u6587\u9996\u548C\u6587\u672B\u90FD\u5199\u7740\u51FA\u5904\uFF1B\u5217\u8868\u4E0A\u4F18\u5148\u663E\u793A AI \u6458\u8981\u3002</p>
   </div>
 </header>
 <main id="content" class="wrap">${options.body}</main>
 <footer class="site">
   <div class="wrap">
-    <p>\u672C\u7AD9\u53EA\u6574\u7406\u516C\u5F00\u6765\u6E90\u7684\u6807\u9898\u3001\u77ED\u6458\u8981\u4E0E\u94FE\u63A5\uFF0C\u4E0D\u8F6C\u8F7D\u5168\u6587\u3002\u5185\u5BB9\u8457\u4F5C\u6743\u5F52\u539F\u4F5C\u8005\u6240\u6709\u3002</p>
+    <p>\u6B63\u6587\u8F6C\u8F7D\u81EA\u516C\u5F00\u6765\u6E90\uFF0C\u6587\u9996\u548C\u6587\u672B\u4FDD\u7559\u6807\u9898\u3001\u4F5C\u8005\u3001\u6765\u6E90\u548C\u539F\u6587\u94FE\u63A5\u3002\u5185\u5BB9\u8457\u4F5C\u6743\u5F52\u539F\u4F5C\u8005\u6240\u6709\uFF0C\u5982\u6709\u4FB5\u6743\u8BF7\u8054\u7CFB\u5220\u9664\u3002</p>
     <p>\u6E38\u7267\u624B\u8BB0 \xB7 <a href="/rss.xml">\u8BA2\u9605 RSS</a> \xB7 <a href="/about">\u5173\u4E8E\u8FD9\u4EFD\u65E5\u66F4</a></p>
   </div>
 </footer>
@@ -1361,8 +1933,8 @@ function classicsBlock(view) {
     (item, index) => `<article class="item">
       <div class="index">${String(index + 1).padStart(2, "0")}</div>
       <div>
-        <h3><a href="/item/${item.id}">${esc(item.title)}</a></h3>
-        ${item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
+        <h3><a href="/a/${item.id}">${esc(item.title)}</a></h3>
+        ${item.ai_summary ? `<p class="excerpt"><span class="ai-mark">AI \u6458\u8981</span> ${esc(item.ai_summary)}</p>` : item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
         <p class="attr">${attribution(item)}</p>
         <p class="submeta">${esc([TOPICS.find((topic) => topic.id === item.topic)?.label, item.quality_score ? `${item.quality_score} \u5206` : ""].filter(Boolean).join(" \xB7 "))}</p>
       </div>
@@ -1409,8 +1981,8 @@ function itemCard(item, index, sourceFilter) {
   return `<article class="item">
     <div class="index">${String(index).padStart(2, "0")}</div>
     <div>
-      <h3><a href="/item/${item.id}">${esc(item.title)}</a></h3>
-      ${item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
+      <h3><a href="/a/${item.id}">${esc(item.title)}</a></h3>
+      ${item.ai_summary ? `<p class="excerpt"><span class="ai-mark">AI \u6458\u8981</span> ${esc(item.ai_summary)}</p>` : item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
       <p class="attr">${attribution(item)}</p>
       ${tagLinks(item, sourceFilter)}
       <p class="submeta">${esc(bits.join(" \xB7 "))}</p>
@@ -1456,7 +2028,7 @@ function renderHome(view, origin) {
     ${view.total > PAGE_SIZE ? `<nav class="pager" aria-label="\u5206\u9875">${prev}<span>\u7B2C ${view.page} / ${pages} \u9875</span>${next}</nav>` : ""}`;
   return layout({
     title: "\u6700\u65B0",
-    description: "\u6570\u5B57\u6E38\u6C11\u3001\u8FDC\u7A0B\u5DE5\u4F5C\u3001\u7B7E\u8BC1\u4E0E\u65C5\u5C45\u7684\u6BCF\u65E5\u9009\u8BFB\u3002\u53EA\u6536\u5F55\u6807\u9898\u3001\u77ED\u6458\u8981\u548C\u539F\u6587\u94FE\u63A5\u3002",
+    description: "\u6570\u5B57\u6E38\u6C11\u3001\u8FDC\u7A0B\u5DE5\u4F5C\u3001\u7B7E\u8BC1\u4E0E\u65C5\u5C45\u7684\u6BCF\u65E5\u9009\u8BFB\u3002\u5217\u8868\u7ED9\u51FA AI \u6458\u8981\uFF0C\u8BE6\u60C5\u9875\u662F\u5E26\u6765\u6E90\u7684\u5168\u6587\u3002",
     path: pageHref(view.page, view.source, view.tag, view.topic),
     body,
     origin
@@ -1471,21 +2043,25 @@ function renderItem(item, origin) {
     item.language === "zh" ? "\u4E2D\u6587" : "EN"
   ].filter(Boolean);
   const discussion = item.discussion_url ? `<p class="discuss"><a href="${safeHref(item.discussion_url)}" target="_blank" rel="noopener noreferrer">\u67E5\u770B\u8BA8\u8BBA\u7EBF\u7A0B</a></p>` : "";
+  const full = safeBody(item.content_html);
+  const aiBox = item.ai_summary ? `<p class="ai-summary"><strong>AI \u6458\u8981</strong> ${esc(item.ai_summary)}</p>` : "";
+  const article = full ? `<div class="article-body">${full}</div>` : `<p class="note">${item.excerpt ? "\u5168\u6587\u8FD8\u6CA1\u6709\u6293\u5230\uFF0C\u4E0B\u9762\u5148\u653E\u539F\u6765\u7684\u6458\u8981\u3002" : "\u8FD9\u6761\u6765\u6E90\u6682\u65F6\u6CA1\u6709\u53EF\u7528\u7684\u6B63\u6587\u3002"}</p>${item.excerpt ? `<blockquote class="quote">${esc(item.excerpt)}</blockquote>` : ""}`;
   const body = `<article class="post">
     <p class="kicker">${esc(item.language === "zh" ? "\u4E2D\u6587" : "EN")}</p>
     <h1>${esc(item.title)}</h1>
-    <p class="attr">${attribution(item)}</p>
-    ${item.excerpt ? `<blockquote class="quote">${esc(item.excerpt)}</blockquote>` : `<p class="note">\u8FD9\u6761\u6765\u6E90\u6CA1\u6709\u63D0\u4F9B\u53EF\u7528\u7684\u6458\u8981\u3002</p>`}
-    <p class="note">\u4E0A\u9762\u662F\u6765\u6E90\u7AD9\u70B9\u516C\u5F00\u63CF\u8FF0\u91CC\u7684\u77ED\u6458\u8981\uFF0C\u6700\u591A 300 \u5B57\uFF0C\u4E0D\u662F\u6B63\u6587\u3002\u8BF7\u4ECE\u539F\u6587\u94FE\u63A5\u7EE7\u7EED\u8BFB\u3002</p>
+    ${aiBox}
+    ${reprint(item)}
+    ${article}
     <p><a class="read" href="${safeHref(item.canonical_url)}" target="_blank" rel="noopener noreferrer">\u9605\u8BFB\u539F\u6587</a></p>
     ${discussion}
     ${tagLinks(item, "")}
     <p class="submeta">${esc(bits.join(" \xB7 "))}</p>
+    ${reprint(item)}
   </article>`;
   return layout({
     title: item.title,
-    description: item.excerpt || `${item.source_name} \u7684\u4E00\u6761\u6536\u5F55\uFF0C\u94FE\u56DE\u539F\u6587\u3002`,
-    path: `/item/${item.id}`,
+    description: item.ai_summary || item.excerpt || `${item.source_name} \u7684\u4E00\u7BC7\u8F6C\u8F7D\u3002`,
+    path: `/a/${item.id}`,
     body,
     origin
   });
@@ -1497,26 +2073,26 @@ function renderAbout(origin) {
   ).join("");
   const body = `<article class="about">
     <h1>\u5173\u4E8E\u6E38\u7267\u624B\u8BB0</h1>
-    <p>\u8FD9\u662F\u7ED9\u4E2D\u6587\u8BFB\u8005\u7684\u4E00\u4EFD\u6570\u5B57\u6E38\u6C11\u65E5\u66F4\u3002\u5B83\u4E0D\u751F\u4EA7\u539F\u521B\u957F\u6587\uFF0C\u53EA\u6536\u5F55\u6807\u9898\u4EE5\u4E2D\u6587\u4E3A\u4E3B\u7684\u516C\u5F00\u5185\u5BB9\uFF0C\u7559\u4E0B\u6807\u9898\u3001\u77ED\u6458\u8981\u548C\u51FA\u5904\u3002</p>
+    <p>\u8FD9\u662F\u7ED9\u4E2D\u6587\u8BFB\u8005\u7684\u4E00\u4EFD\u6570\u5B57\u6E38\u6C11\u65E5\u66F4\u3002\u5B83\u6536\u5F55\u6807\u9898\u4EE5\u4E2D\u6587\u4E3A\u4E3B\u7684\u516C\u5F00\u6587\u7AE0\uFF0C\u5728\u672C\u7AD9\u5C55\u793A\u5168\u6587\uFF0C\u5E76\u5728\u6587\u9996\u6587\u672B\u5199\u660E\u51FA\u5904\u3002</p>
     <h2>\u6BCF\u5929\u600E\u4E48\u66F4\u65B0</h2>
     <p>\u540C\u4E00\u4E2A Cloudflare Worker \u5728\u5317\u4EAC\u65F6\u95F4 08:00 \u548C 22:00 \u5404\u8DD1\u4E00\u6B21\u91C7\u96C6\u3002\u4E24\u6B21\u90FD\u5199\u8FDB\u5F53\u5929\u7684\u5206\u7EC4\u3002\u6BCF\u6761\u90FD\u8981\u5148\u5BF9\u4E0A\u6D77\u5916\u5F00\u5361\u3001\u624B\u673A\u5361\u3001\u7A0E\u53F7\u3001AI \u8BA2\u9605\u3001\u7B7E\u8BC1\u3001\u8FDC\u7A0B\u65B9\u6CD5\u6216\u5238\u5546\uFF0C\u5E76\u4E14\u5206\u6570\u591F\u9AD8\uFF1B\u62DB\u8058\u548C\u95F2\u804A\u4E0D\u4F1A\u8FDB\u6765\u3002\u6BCF\u6B21\u6700\u591A\u65B0\u589E 16 \u6761\u3002</p>
     <h2>\u9875\u9762\u4E0A\u6709\u4EC0\u4E48</h2>
     <ul>
       <li>\u9996\u9875\u6309\u6536\u5F55\u65E5\u5206\u7EC4\uFF0C\u53EF\u4EE5\u6309\u6765\u6E90\u548C\u4E3B\u9898\u7B5B\u9009\uFF0C\u4E5F\u53EF\u4EE5\u7FFB\u9875\u3002</li>
-      <li>\u6BCF\u6761\u8BB0\u5F55\u6709\u81EA\u5DF1\u7684\u9875\u9762\uFF0C\u4E0A\u9762\u6709\u6765\u6E90\u3001\u4F5C\u8005\u548C\u539F\u6587\u94FE\u63A5\u3002</li>
+      <li>\u6BCF\u7BC7\u6587\u7AE0\u5728 <code>/a/\u7F16\u53F7</code>\uFF0C\u6B63\u6587\u4E0A\u65B9\u6709 AI \u6458\u8981\uFF0C\u5F00\u5934\u548C\u7ED3\u5C3E\u90FD\u6709\u539F\u6587\u6807\u9898\u3001\u4F5C\u8005\u3001\u6765\u6E90\u548C\u539F\u6587\u94FE\u63A5\u3002</li>
       <li><a href="/rss.xml">/rss.xml</a> \u662F\u8FD9\u4EFD\u65E5\u66F4\u81EA\u5DF1\u7684\u8BA2\u9605\u6E90\u3002</li>
     </ul>
-    <h2>\u6211\u4EEC\u4E0D\u4FDD\u5B58\u4EC0\u4E48</h2>
-    <p>\u4E0D\u6293\u6B63\u6587\uFF0C\u4E5F\u4E0D\u628A\u5168\u6587\u653E\u8FDB\u6570\u636E\u5E93\u3002\u6458\u8981\u6765\u81EA\u6765\u6E90\u81EA\u5DF1\u7684\u63CF\u8FF0\u3001\u7B80\u4ECB\u6216\u5E16\u5B50\u5F00\u5934\uFF0C\u622A\u5230 300 \u4E2A\u5B57\u7B26\u3002\u4F5C\u8005\u672A\u77E5\u65F6\u4F1A\u5199\u6210\u300C\u672A\u77E5\u300D\uFF0C\u4E0D\u4F1A\u628A\u8F6C\u5E16\u7684\u4EBA\u8BF4\u6210\u539F\u4F5C\u8005\u3002</p>
+    <h2>\u6B63\u6587\u548C\u6458\u8981</h2>
+    <p>\u91C7\u96C6\u65F6\u4F18\u5148\u4F7F\u7528\u8BA2\u9605\u6E90\u91CC\u7684\u5168\u6587\uFF0C\u6CA1\u6709\u7684\u8BDD\u518D\u6253\u5F00\u539F\u6587\u9875\u63D0\u53D6\u6B63\u6587\u3002\u811A\u672C\u3001\u6837\u5F0F\u548C\u8DDF\u8E2A\u53C2\u6570\u4F1A\u88AB\u53BB\u6389\u3002\u6293\u4E0D\u5230\u6B63\u6587\u65F6\u4ECD\u663E\u793A\u539F\u6765\u7684\u77ED\u6458\u8981\u3002\u6293\u5230\u6B63\u6587\u540E\uFF0CWorkers AI \u4F1A\u5199\u4E24\u5230\u4E09\u53E5\u7B80\u4F53\u4E2D\u6587\u6458\u8981\uFF1B\u6A21\u578B\u5931\u8D25\u65F6\u5217\u8868\u7EE7\u7EED\u7528 RSS \u6458\u8981\u3002\u4F5C\u8005\u672A\u77E5\u65F6\u5217\u8868\u5199\u6210\u300C\u672A\u77E5\u300D\uFF0C\u4E0D\u4F1A\u628A\u8F6C\u5E16\u7684\u4EBA\u8BF4\u6210\u539F\u4F5C\u8005\u3002</p>
     <h2>\u73B0\u5728\u7684\u6765\u6E90</h2>
     <ul>${sources}</ul>
     <p>\u82F1\u6587\u6765\u6E90\u5DF2\u7ECF\u62FF\u6389\u3002V2EX \u7684\u5B98\u65B9\u63A5\u53E3\u4ECE Cloudflare \u7684\u5730\u5740\u8BBF\u95EE\u4F1A\u8FD4\u56DE 403\uFF0C\u6240\u4EE5\u4E5F\u4E0D\u76F4\u63A5\u6293\u3002\u6807\u9898\u91CC\u6C49\u5B57\u4E0D\u591F\u591A\u7684\u6761\u76EE\u4F1A\u88AB\u8DF3\u8FC7\u3002</p>
     <h2>\u7248\u6743</h2>
-    <p>\u6807\u9898\u3001\u6458\u8981\u548C\u94FE\u63A5\u53EA\u4E3A\u4E86\u65B9\u4FBF\u4F60\u51B3\u5B9A\u8981\u4E0D\u8981\u70B9\u56DE\u53BB\u3002\u5185\u5BB9\u8457\u4F5C\u6743\u5F52\u539F\u4F5C\u8005\u6240\u6709\u3002\u82E5\u8981\u9605\u8BFB\uFF0C\u8BF7\u4F7F\u7528\u6BCF\u6761\u8BB0\u5F55\u4E0A\u7684\u539F\u6587\u94FE\u63A5\u3002</p>
+    <p>\u672C\u6587\u8F6C\u8F7D\u81EA\u5404\u6765\u6E90\u7AD9\u70B9\uFF0C\u7248\u6743\u5F52\u539F\u4F5C\u8005\u6240\u6709\uFF0C\u5982\u6709\u4FB5\u6743\u8BF7\u8054\u7CFB\u5220\u9664\u3002\u6BCF\u7BC7\u6587\u7AE0\u7684\u5F00\u5934\u548C\u7ED3\u5C3E\u90FD\u91CD\u590D\u4E86\u539F\u6587\u6807\u9898\u3001\u6765\u6E90\u548C\u539F\u6587\u94FE\u63A5\u3002</p>
   </article>`;
   return layout({
     title: "\u5173\u4E8E",
-    description: "\u6E38\u7267\u624B\u8BB0\u5982\u4F55\u6BCF\u5929\u6536\u96C6\u6570\u5B57\u6E38\u6C11\u4E0E\u8FDC\u7A0B\u5DE5\u4F5C\u7684\u516C\u5F00\u6307\u5357\uFF0C\u4EE5\u53CA\u5B83\u4E0D\u8F6C\u8F7D\u5168\u6587\u7684\u539F\u56E0\u3002",
+    description: "\u6E38\u7267\u624B\u8BB0\u5982\u4F55\u6BCF\u5929\u6536\u96C6\u6570\u5B57\u6E38\u6C11\u4E0E\u8FDC\u7A0B\u5DE5\u4F5C\u7684\u516C\u5F00\u6307\u5357\uFF0C\u5E76\u5728\u4FDD\u7559\u51FA\u5904\u7684\u524D\u63D0\u4E0B\u5C55\u793A\u5168\u6587\u3002",
     path: "/about",
     body,
     origin
@@ -1545,7 +2121,7 @@ function renderError(origin) {
 __name(renderError, "renderError");
 function renderRss(items, origin) {
   const entries = items.map((item) => {
-    const link = `${origin}/item/${item.id}`;
+    const link = `${origin}/a/${item.id}`;
     const author = displayAuthor(item.author);
     const description = `${item.excerpt || "\u6765\u6E90\u6CA1\u6709\u63D0\u4F9B\u6458\u8981\u3002"} \u6765\u6E90\uFF1A${item.source_name}\u3002\u4F5C\u8005\uFF1A${author}\u3002\u539F\u6587\uFF1A${item.canonical_url}`;
     const when = item.published_at || item.collected_at;
@@ -1565,7 +2141,7 @@ function renderRss(items, origin) {
   <title>\u6E38\u7267\u624B\u8BB0</title>
   <link>${xmlEsc(origin)}/</link>
   <atom:link href="${xmlEsc(origin)}/rss.xml" rel="self" type="application/rss+xml"/>
-  <description>\u6BCF\u5929\u6574\u7406\u6570\u5B57\u6E38\u6C11\u3001\u8FDC\u7A0B\u5DE5\u4F5C\u3001\u7B7E\u8BC1\u4E0E\u65C5\u5C45\u7684\u516C\u5F00\u6307\u5357\u3002\u53EA\u6709\u6807\u9898\u3001\u77ED\u6458\u8981\u548C\u539F\u6587\u94FE\u63A5\uFF0C\u4E0D\u8F6C\u8F7D\u5168\u6587\u3002</description>
+  <description>\u6BCF\u5929\u6574\u7406\u6570\u5B57\u6E38\u6C11\u3001\u8FDC\u7A0B\u5DE5\u4F5C\u3001\u7B7E\u8BC1\u4E0E\u65C5\u5C45\u7684\u516C\u5F00\u6307\u5357\u3002\u7AD9\u5185\u6587\u7AE0\u4FDD\u7559\u51FA\u5904\u5E76\u94FE\u56DE\u539F\u6587\u3002</description>
   <language>zh-CN</language>
   <lastBuildDate>${xmlEsc((/* @__PURE__ */ new Date()).toUTCString())}</lastBuildDate>
   ${entries}
@@ -1645,6 +2221,12 @@ async function handle(request, env) {
       if (url.pathname === "/admin/collect") {
         return json(await runCollect(env, "manual"), 200);
       }
+      if (url.pathname === "/admin/fetch-content") {
+        return json({ ok: true, ...await fillMissingContent(env, parseBatchLimit(url.searchParams.get("limit"))) });
+      }
+      if (url.pathname === "/admin/summarize") {
+        return json({ ok: true, ...await fillMissingSummaries(env, parseBatchLimit(url.searchParams.get("limit"))) });
+      }
       return json({ error: "not found" }, 404);
     }
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -1664,7 +2246,9 @@ async function handle(request, env) {
         }
       });
     }
-    const itemMatch = url.pathname.match(/^\/item\/(\d+)$/);
+    const legacyMatch = url.pathname.match(/^\/item\/(\d+)$/);
+    if (legacyMatch) return redirect(`/a/${legacyMatch[1]}`);
+    const itemMatch = url.pathname.match(/^\/a\/(\d+)$/);
     if (itemMatch) {
       const id = Number(itemMatch[1]);
       const item = await getItem(env.DB, id);

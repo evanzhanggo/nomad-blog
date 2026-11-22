@@ -1,5 +1,6 @@
 import { runBackfill } from "./backfill";
 import { purgeItems, runCollect } from "./collect";
+import { fillMissingContent, fillMissingSummaries, parseBatchLimit } from "./fulltext";
 import { countItems, getItem, listClassics, listItems, normalizePage, PAGE_SIZE, parsePage, recentItems } from "./queries";
 import { topicById } from "./score";
 import {
@@ -84,6 +85,12 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (url.pathname === "/admin/collect") {
         return json(await runCollect(env, "manual"), 200);
       }
+      if (url.pathname === "/admin/fetch-content") {
+        return json({ ok: true, ...(await fillMissingContent(env, parseBatchLimit(url.searchParams.get("limit")))) });
+      }
+      if (url.pathname === "/admin/summarize") {
+        return json({ ok: true, ...(await fillMissingSummaries(env, parseBatchLimit(url.searchParams.get("limit")))) });
+      }
       return json({ error: "not found" }, 404);
     }
 
@@ -106,7 +113,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       });
     }
 
-    const itemMatch = url.pathname.match(/^\/item\/(\d+)$/);
+    const legacyMatch = url.pathname.match(/^\/item\/(\d+)$/);
+    if (legacyMatch) return redirect(`/a/${legacyMatch[1]}`);
+
+    const itemMatch = url.pathname.match(/^\/a\/(\d+)$/);
     if (itemMatch) {
       const id = Number(itemMatch[1]);
       const item = await getItem(env.DB, id);

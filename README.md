@@ -52,7 +52,7 @@ curl -X POST http://127.0.0.1:4391/admin/collect \
 
 ## 自动部署
 
-推送到 `main` 后，Cloudflare Workers Builds 会用已配置的部署命令 `npx wrangler deploy` 自动发布站点。生产 D1 已经手动应用过迁移 `0001` 和 `0002`，构建里不要再跑迁移。`ADMIN_TOKEN` 已是生产 Worker 密钥，`wrangler deploy` 会保留它，不要写进仓库。
+推送到 `main` 后，Cloudflare Workers Builds 会用已配置的部署命令 `npx wrangler deploy` 自动发布站点。生产 D1 已经手动应用过迁移 `0001` 和 `0002`。`0003_fulltext.sql` 也要手动应用一次，构建里不要自动跑迁移。`ADMIN_TOKEN` 已是生产 Worker 密钥，`wrangler deploy` 会保留它，不要写进仓库。Workers AI 绑定名是 `AI`。
 
 ## 部署
 
@@ -105,13 +105,15 @@ curl -X POST https://nomad.evanzhang.cloud/admin/backfill \
 
 ## 页面
 
-- `/` 按收录日分组的最新条目，可用来源和主题筛选，可翻页。
-- `/item/:id` 单条记录。来源行的形式是「来源：… · 作者：… · 原文链接」。作者缺失时写「未知」。
+- `/` 按收录日分组的最新条目，可用来源和主题筛选，可翻页。标题链到 `/a/:id`，旁边留一个小的「原文」链接。有 AI 摘要时卡片显示摘要，否则用原来的 RSS 摘要。
+- `/a/:id` 全文页。顶部有「AI 摘要」（没有生成时回退到原来的摘要）。文首和文末都写原文标题、作者（知道才写）、来源站点、原文链接，以及「本文转载自…，版权归原作者所有，如有侵权请联系删除」。`/item/:id` 会跳到这里。
 - `/about` 说明这份日更收集什么、不收集什么。
 - `/rss.xml` 站点自己的 RSS。条目链到本站详情，描述里带原文地址。
-- `POST /admin/collect` 手动采集。
+- `POST /admin/collect` 手动采集。新条目会在限额内抓全文并写 AI 摘要。
+- `POST /admin/fetch-content?limit=N` 给还没有正文的行抓全文，抓到后顺便摘要。`N` 默认 4，最大 8。
+- `POST /admin/summarize?limit=N` 给还没有 AI 摘要的行补摘要。
 
-页脚写明：内容著作权归原作者所有，本站不转载全文。
+页脚写明：内容著作权归原作者所有。正文是转载，出处写在每篇文章的开头和结尾。
 
 ## 来源
 
@@ -130,7 +132,7 @@ curl -X POST https://nomad.evanzhang.cloud/admin/backfill \
 
 质量分写在 `src/score.ts`。先丢掉招聘、内推、派单、美工。然后按主题词（海外开卡、手机卡、税号、AI 订阅、签证、远程方法、券商）打分，加上指南/教程、摘要长度和热度。低于 40 分不入库。首页「经典教程」只显示回填的高分文章，按主题分页签；「最新收录」仍是每日两次的新条目。
 
-请求都带 `User-Agent: NomadBlogBot/1.0 (+https://nomad.evanzhang.cloud; excerpts-only; attribution)`。
+请求都带 `User-Agent: NomadBlogBot/1.0 (+https://nomad.evanzhang.cloud; attribution)`。全文优先用订阅源的 `content:encoded`，否则打开原文页提取。摘要模型是 Workers AI 的 `@cf/qwen/qwen3-30b-a3b-fp8`（目录里没有 `@cf/qwen/qwen2.5-7b-instruct`）。上传脚本时除了 D1，还要声明 AI 绑定 `{ "type": "ai", "name": "AI" }`。
 
 没有接进来的：
 

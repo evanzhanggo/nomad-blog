@@ -49,6 +49,7 @@ export function buildDraft(input: DraftInput): Draft | null {
     language: "zh",
     topic: quality.topic,
     qualityScore: quality.score,
+    feedHtml: input.contentHtml?.trim() ? input.contentHtml : null,
   };
 }
 

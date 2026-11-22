@@ -19,3 +19,6 @@ migrations_dir = "migrations"
 [[routes]]
 pattern = "nomad.evanzhang.cloud"
 custom_domain = true
+
+[ai]
+binding = "AI"
