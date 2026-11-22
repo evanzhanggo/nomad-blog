@@ -1,4 +1,5 @@
 import { PAGE_SIZE, pageCount } from "./queries";
+import { cardSnippet, highlight, SEARCH_PAGE_SIZE } from "./search";
 import { SOURCES } from "./sources";
 import { CSS } from "./styles";
 import { TOPICS } from "./score";
@@ -76,14 +77,23 @@ function popularity(item: ItemRow): string {
   return `${item.popularity} ${item.popularity_label}`;
 }
 
+function searchForm(query: string): string {
+  return `<form class="search" method="get" action="/search" role="search">
+    <label for="q">搜索</label>
+    <input id="q" name="q" type="search" value="${esc(query)}" placeholder="搜索标题、摘要或正文" maxlength="80" enterkeyhint="search">
+    <button type="submit">搜索</button>
+  </form>`;
+}
+
 function layout(options: {
   title: string;
   description: string;
   path: string;
   body: string;
   origin: string;
+  query?: string;
 }): string {
-  const onHome = options.path === "/" || options.path.startsWith("/?");
+  const onHome = !options.query && (options.path === "/" || options.path.startsWith("/?"));
   const fullTitle = onHome ? "游牧手记" : `${options.title} · 游牧手记`;
   const canonical = `${options.origin}${options.path === "/" ? "/" : options.path}`;
   return `<!DOCTYPE html>
@@ -118,6 +128,7 @@ function layout(options: {
       </nav>
     </div>
     <p class="deck">每天整理中文数字游民指南。点标题读全文，文首和文末都写着出处；列表上优先显示 AI 摘要。</p>
+    ${searchForm(options.query ?? "")}
   </div>
 </header>
 <main id="content" class="wrap">${options.body}</main>
@@ -186,17 +197,20 @@ function filters(view: HomeView): string {
   </form>`;
 }
 
-function itemCard(item: ItemRow, index: number, sourceFilter: string): string {
+function itemCard(item: ItemRow, index: number, sourceFilter: string, query = ""): string {
   const bits = [
     popularity(item),
     item.published_at ? `发布于 ${shanghaiLabel(item.published_at, false)}` : "",
     item.language === "zh" ? "中文" : "EN",
   ].filter(Boolean);
+  const summary = query ? cardSnippet(item, query) : item.ai_summary || item.excerpt || "";
+  const summaryHtml = query ? highlight(summary, query) : esc(summary);
+  const titleHtml = query ? highlight(item.title, query) : esc(item.title);
   return `<article class="item">
     <div class="index">${String(index).padStart(2, "0")}</div>
     <div>
-      <h3><a href="/a/${item.id}">${esc(item.title)}</a></h3>
-      ${item.ai_summary ? `<p class="excerpt"><span class="ai-mark">AI 摘要</span> ${esc(item.ai_summary)}</p>` : item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
+      <h3><a href="/a/${item.id}">${titleHtml}</a></h3>
+      ${summary ? `<p class="excerpt">${!query && item.ai_summary ? `<span class="ai-mark">AI 摘要</span> ` : ""}${summaryHtml}</p>` : ""}
       <p class="attr">${attribution(item)}</p>
       ${tagLinks(item, sourceFilter)}
       <p class="submeta">${esc(bits.join(" · "))}</p>
@@ -260,6 +274,52 @@ export function renderHome(view: HomeView, origin: string): string {
     path: pageHref(view.page, view.source, view.tag, view.topic),
     body,
     origin,
+  });
+}
+
+export interface SearchView {
+  q: string;
+  items: ItemRow[];
+  total: number;
+  page: number;
+  basePath: "/" | "/search";
+}
+
+function searchHref(base: string, q: string, page: number): string {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (page > 1) params.set("page", String(page));
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
+}
+
+export function renderSearch(view: SearchView, origin: string): string {
+  const pages = pageCount(view.total, SEARCH_PAGE_SIZE);
+  const cards = view.items
+    .map((item, index) => itemCard(item, (view.page - 1) * SEARCH_PAGE_SIZE + index + 1, "", view.q))
+    .join("");
+  const list = view.q
+    ? cards || `<div class="empty"><p>没有找到与「${esc(view.q)}」相关的条目。</p></div>`
+    : `<div class="empty"><p>请输入关键词。可以搜标题、摘要、来源、主题和正文。</p></div>`;
+  const prev =
+    view.page > 1
+      ? `<a href="${esc(searchHref(view.basePath, view.q, view.page - 1))}">上一页</a>`
+      : `<span>上一页</span>`;
+  const next =
+    view.page < pages && view.q
+      ? `<a href="${esc(searchHref(view.basePath, view.q, view.page + 1))}">下一页</a>`
+      : `<span>下一页</span>`;
+  const body = `<h2 class="daily-heading">搜索结果</h2>
+    <p class="count">${view.q ? `共 ${view.total} 篇 · 「${esc(view.q)}」 · 第 ${view.page} / ${pages} 页` : "输入关键词后搜索全站。"}</p>
+    ${list}
+    ${view.q && view.total > SEARCH_PAGE_SIZE ? `<nav class="pager" aria-label="分页">${prev}<span>第 ${view.page} / ${pages} 页</span>${next}</nav>` : ""}`;
+  return layout({
+    title: view.q ? `搜索 ${view.q}` : "搜索",
+    description: view.q ? `搜索「${view.q}」的结果。` : "搜索游牧手记。",
+    path: searchHref(view.basePath, view.q, view.page),
+    body,
+    origin,
+    query: view.q,
   });
 }
 

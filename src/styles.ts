@@ -111,6 +111,28 @@ main { flex: 1; padding: 1.4rem 0 3rem; }
 }
 button { cursor: pointer; border-radius: 999px; }
 select { border-radius: 999px; background: var(--paper-2); border-color: var(--line); }
+form.search { display: flex; gap: 0.5rem; margin: 0.85rem 0 0; }
+form.search label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+form.search input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 0.55rem 0.95rem;
+}
+mark { background: #f3df9a; color: inherit; padding: 0 0.12em; border-radius: 0.15em; }
+@media (prefers-color-scheme: dark) {
+  mark { background: #6a5420; }
+}
 .source-form { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .source-form label { color: var(--muted); font-size: 0.92rem; }
 .count { color: var(--muted); font-size: 0.92rem; margin: 0; }

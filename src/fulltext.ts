@@ -1,4 +1,5 @@
 import { articleHtmlFromSource } from "./content";
+import { plainContent } from "./search";
 import { summarizeArticle } from "./summary";
 import { USER_AGENT } from "./text";
 import type { Draft, Env } from "./types";
@@ -41,11 +42,47 @@ async function writeContent(db: D1Database, url: string, html: string | null, at
   await db
     .prepare(
       `UPDATE items
-       SET content_html = ?, content_fetched_at = ?
+       SET content_html = ?, content_fetched_at = ?, content_text = ?
        WHERE canonical_url = ? AND content_html IS NULL`,
     )
-    .bind(html, at, url)
+    .bind(html, at, plainContent(html), url)
     .run();
+}
+
+export function parseReindexLimit(raw: string | null): number {
+  if (raw == null || raw === "" || !/^\d+$/.test(raw)) return 200;
+  const value = Number(raw);
+  if (value < 1) return 200;
+  return Math.min(value, 1000);
+}
+
+export async function reindexContentText(
+  db: D1Database,
+  limit: number,
+): Promise<{ limit: number; updated: number; remaining: number }> {
+  const rows = await db
+    .prepare(
+      `SELECT id, content_html FROM items
+       WHERE content_html IS NOT NULL AND content_text IS NULL
+       ORDER BY id
+       LIMIT ?`,
+    )
+    .bind(limit)
+    .all<{ id: number; content_html: string }>();
+  let updated = 0;
+  for (const row of rows.results ?? []) {
+    const result = await db
+      .prepare(`UPDATE items SET content_text = ? WHERE id = ? AND content_text IS NULL`)
+      .bind(plainContent(row.content_html) ?? "", row.id)
+      .run();
+    updated += result.meta?.changes ?? 0;
+  }
+  const left = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM items WHERE content_html IS NOT NULL AND content_text IS NULL`,
+    )
+    .first<{ n: number }>();
+  return { limit, updated, remaining: Number(left?.n ?? 0) };
 }
 
 async function writeSummary(db: D1Database, id: number, summary: string | null, at: string): Promise<void> {

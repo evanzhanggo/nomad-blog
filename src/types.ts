@@ -62,6 +62,8 @@ export interface ItemRow {
   ai_summary_at?: string | null;
   content_html?: string | null;
   content_fetched_at?: string | null;
+  content_text?: string | null;
+  content_snippet?: string | null;
 }
 
 export interface Source {

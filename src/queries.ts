@@ -1,3 +1,4 @@
+import { likePattern, SEARCH_PAGE_SIZE, topicIdsFor } from "./search";
 import type { ItemRow } from "./types";
 
 export const PAGE_SIZE = 20;
@@ -104,6 +105,55 @@ export async function listClassics(db: D1Database, topic: string): Promise<ItemR
        LIMIT ?`,
     )
     .bind(topic, topic, topic ? 12 : 6)
+    .all<ItemRow>();
+  return rows.results ?? [];
+}
+
+function searchWhere(query: string): { sql: string; binds: string[] } {
+  const pattern = likePattern(query);
+  const topics = topicIdsFor(query);
+  const parts = [
+    "title LIKE ? ESCAPE '\\'",
+    "ifnull(ai_summary, '') LIKE ? ESCAPE '\\'",
+    "excerpt LIKE ? ESCAPE '\\'",
+    "source_name LIKE ? ESCAPE '\\'",
+    "topic LIKE ? ESCAPE '\\'",
+    "ifnull(content_text, '') LIKE ? ESCAPE '\\'",
+  ];
+  const binds = [pattern, pattern, pattern, pattern, pattern, pattern];
+  if (topics.length) {
+    parts.push(`topic IN (${topics.map(() => "?").join(", ")})`);
+    binds.push(...topics);
+  }
+  return { sql: parts.join(" OR "), binds };
+}
+
+export async function countSearch(db: D1Database, query: string): Promise<number> {
+  const where = searchWhere(query);
+  const row = await db
+    .prepare(`SELECT COUNT(*) AS n FROM items WHERE ${where.sql}`)
+    .bind(...where.binds)
+    .first<{ n: number }>();
+  return Number(row?.n ?? 0);
+}
+
+export async function searchItems(db: D1Database, query: string, page: number): Promise<ItemRow[]> {
+  const where = searchWhere(query);
+  const offset = (page - 1) * SEARCH_PAGE_SIZE;
+  const rows = await db
+    .prepare(
+      `SELECT ${ITEM_COLUMNS},
+         substr(
+           ifnull(content_text, ''),
+           max(1, instr(lower(ifnull(content_text, '')), lower(?)) - 24),
+           96
+         ) AS content_snippet
+       FROM items
+       WHERE ${where.sql}
+       ORDER BY collected_at DESC, popularity DESC, id DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .bind(query, ...where.binds, SEARCH_PAGE_SIZE, offset)
     .all<ItemRow>();
   return rows.results ?? [];
 }

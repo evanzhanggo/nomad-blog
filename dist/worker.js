@@ -541,6 +541,180 @@ function articleHtmlFromSource(raw, pageUrl) {
 }
 __name(articleHtmlFromSource, "articleHtmlFromSource");
 
+// src/score.ts
+var MIN_QUALITY_SCORE = 40;
+var TOPICS = [
+  {
+    id: "bank",
+    label: "\u6D77\u5916\u5F00\u5361",
+    patterns: [
+      { re: /港卡|香港银行|香港银行卡|汇丰|中银香港|众安银行|蚂蚁银行|天星银行|虚拟银行|银行卡开户/i, weight: 28, primary: true },
+      { re: /开户|U\s*卡|虚拟卡|\bWise\b|万里汇|收款账户/i, weight: 14 }
+    ]
+  },
+  {
+    id: "sim",
+    label: "\u6D77\u5916\u624B\u673A\u5361",
+    patterns: [
+      { re: /紫卡|giffgaff|保号|eSIM|香港手机号|电话卡|手机卡|Club\s*SIM|英国号|香港号/i, weight: 28, primary: true },
+      { re: /验证码|漫游|实名/i, weight: 8 }
+    ]
+  },
+  {
+    id: "tax",
+    label: "\u6D77\u5916\u7A0E\u53F7",
+    patterns: [
+      { re: /\bITIN\b|税号|税务居民|\bTIN\b|报税|W-7/i, weight: 28, primary: true },
+      { re: /税务|增值税|电子居民/i, weight: 12 }
+    ]
+  },
+  {
+    id: "ai",
+    label: "\u6D77\u5916 AI \u8BA2\u9605",
+    patterns: [
+      { re: /ChatGPT|Claude|OpenAI|Apple\s*ID|美区|外区|Gemini/i, weight: 26, primary: true },
+      { re: /订阅|Plus|礼品卡|虚拟卡/i, weight: 10 }
+    ]
+  },
+  {
+    id: "visa",
+    label: "\u6570\u5B57\u6E38\u6C11\u7B7E\u8BC1",
+    patterns: [
+      { re: /数字游民签证|數位遊牧簽證|游民签证|DNV|居留许可/i, weight: 30, primary: true },
+      { re: /签证|簽證|居留|永居|移民|电子居民/i, weight: 16 }
+    ]
+  },
+  {
+    id: "remote",
+    label: "\u8FDC\u7A0B\u5DE5\u4F5C",
+    patterns: [
+      { re: /远程工作|遠端工作|远程办公|数字游民|數位遊牧/i, weight: 24, primary: true },
+      { re: /自由职业|一人公司|异步办公/i, weight: 12 }
+    ]
+  },
+  {
+    id: "broker",
+    label: "\u6D77\u5916\u5238\u5546",
+    patterns: [
+      { re: /券商|盈透|\bIBKR\b|富途|老虎证券|美股开户|港股通|出入金/i, weight: 28, primary: true },
+      { re: /美股|港股|经纪账户/i, weight: 12 }
+    ]
+  }
+];
+var TOPIC_BY_ID = new Map(TOPICS.map((topic) => [topic.id, topic]));
+function topicById(id) {
+  return TOPIC_BY_ID.get(id);
+}
+__name(topicById, "topicById");
+var GUIDE = /指南|教程|攻略|手把手|实测|流程|步骤|如何|开户|保号|申请/;
+var CHATTER = /呢[？?]?$|大家怎么|请问|求助|吐槽|闲聊|空虚|摸鱼|各位都在/;
+var REJECT = /招聘|内推|招一位|招人|岗位更新|接单|外包|美工|诚邀|派单|月薪|底薪|急招|在招|兼职/;
+function scoreQuality(title, excerpt, popularity2 = 0) {
+  const haystack = `${title}
+${excerpt}`;
+  if (REJECT.test(haystack)) {
+    return { topic: "", score: 0, rejected: true, reason: "\u62DB\u8058\u3001\u6D3E\u5355\u6216\u5E7F\u544A" };
+  }
+  let bestId = "";
+  let best = 0;
+  let primaryInTitle = false;
+  for (const topic of TOPICS) {
+    let points = 0;
+    let primary = false;
+    for (const pattern of topic.patterns) {
+      if (!pattern.re.test(haystack)) continue;
+      points += pattern.weight;
+      if (pattern.primary && pattern.re.test(title)) primary = true;
+    }
+    if (points > best) {
+      best = points;
+      bestId = topic.id;
+      primaryInTitle = primary;
+    }
+  }
+  if (!bestId || best < 12) {
+    return { topic: "", score: best, rejected: false, reason: "\u6CA1\u6709\u5BF9\u4E0A\u6838\u5FC3\u4E3B\u9898" };
+  }
+  const length = Array.from(excerpt).length;
+  const lengthScore = length >= 180 ? 18 : length >= 100 ? 12 : length >= 40 ? 6 : 0;
+  const guideScore = GUIDE.test(haystack) ? 16 : 0;
+  const titleScore = primaryInTitle ? 14 : 0;
+  const engagement = popularity2 >= 20 ? 10 : popularity2 >= 5 ? 6 : popularity2 >= 1 ? 3 : 0;
+  const chatterPenalty = CHATTER.test(title) && !/指南|教程|攻略|实测/.test(title) ? 24 : 0;
+  const score = best + lengthScore + guideScore + titleScore + engagement - chatterPenalty;
+  return {
+    topic: bestId,
+    score,
+    rejected: false,
+    reason: `\u4E3B\u9898${best}+\u7BC7\u5E45${lengthScore}+\u6307\u5357${guideScore}+\u6807\u9898${titleScore}+\u70ED\u5EA6${engagement}-\u95F2\u804A${chatterPenalty}`
+  };
+}
+__name(scoreQuality, "scoreQuality");
+function passesQuality(title, excerpt, popularity2 = 0) {
+  const quality = scoreQuality(title, excerpt, popularity2);
+  return !quality.rejected && quality.score >= MIN_QUALITY_SCORE && quality.topic !== "";
+}
+__name(passesQuality, "passesQuality");
+
+// src/search.ts
+var SEARCH_PAGE_SIZE = 50;
+var QUERY_MAX = 80;
+var TEXT_MAX = 2e4;
+function normalizeSearchQuery(raw) {
+  return (raw ?? "").replace(/\s+/g, " ").trim().slice(0, QUERY_MAX);
+}
+__name(normalizeSearchQuery, "normalizeSearchQuery");
+function likePattern(query) {
+  const escaped = query.replace(/[\\%_]/g, (char) => `\\${char}`);
+  return `%${escaped}%`;
+}
+__name(likePattern, "likePattern");
+function topicIdsFor(query) {
+  const needle = query.toLowerCase();
+  return TOPICS.filter(
+    (topic) => topic.id.toLowerCase().includes(needle) || topic.label.toLowerCase().includes(needle)
+  ).map((topic) => topic.id);
+}
+__name(topicIdsFor, "topicIdsFor");
+function plainContent(html2) {
+  if (!html2) return null;
+  const text = visibleText(html2);
+  if (!text) return "";
+  return Array.from(text).slice(0, TEXT_MAX).join("");
+}
+__name(plainContent, "plainContent");
+function highlight(text, query) {
+  const needle = query.trim();
+  if (!needle) return esc(text);
+  const haystack = text.toLowerCase();
+  const target = needle.toLowerCase();
+  let html2 = "";
+  let cursor = 0;
+  while (cursor < text.length) {
+    const index = haystack.indexOf(target, cursor);
+    if (index < 0) {
+      html2 += esc(text.slice(cursor));
+      break;
+    }
+    html2 += esc(text.slice(cursor, index));
+    html2 += `<mark>${esc(text.slice(index, index + needle.length))}</mark>`;
+    cursor = index + needle.length;
+    if (cursor <= index) break;
+  }
+  return html2;
+}
+__name(highlight, "highlight");
+function cardSnippet(item, query) {
+  const summary = item.ai_summary || item.excerpt || "";
+  const needle = query.trim().toLowerCase();
+  if (!needle) return summary;
+  if (summary.toLowerCase().includes(needle) || item.title.toLowerCase().includes(needle)) return summary;
+  const snippet = item.content_snippet ?? "";
+  if (snippet.toLowerCase().includes(needle)) return snippet;
+  return summary;
+}
+__name(cardSnippet, "cardSnippet");
+
 // src/summary.ts
 var SUMMARY_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 var INPUT_CHARS = 6e3;
@@ -647,11 +821,36 @@ __name(fetchPage, "fetchPage");
 async function writeContent(db, url, html2, at) {
   await db.prepare(
     `UPDATE items
-       SET content_html = ?, content_fetched_at = ?
+       SET content_html = ?, content_fetched_at = ?, content_text = ?
        WHERE canonical_url = ? AND content_html IS NULL`
-  ).bind(html2, at, url).run();
+  ).bind(html2, at, plainContent(html2), url).run();
 }
 __name(writeContent, "writeContent");
+function parseReindexLimit(raw) {
+  if (raw == null || raw === "" || !/^\d+$/.test(raw)) return 200;
+  const value = Number(raw);
+  if (value < 1) return 200;
+  return Math.min(value, 1e3);
+}
+__name(parseReindexLimit, "parseReindexLimit");
+async function reindexContentText(db, limit) {
+  const rows = await db.prepare(
+    `SELECT id, content_html FROM items
+       WHERE content_html IS NOT NULL AND content_text IS NULL
+       ORDER BY id
+       LIMIT ?`
+  ).bind(limit).all();
+  let updated = 0;
+  for (const row of rows.results ?? []) {
+    const result = await db.prepare(`UPDATE items SET content_text = ? WHERE id = ? AND content_text IS NULL`).bind(plainContent(row.content_html) ?? "", row.id).run();
+    updated += result.meta?.changes ?? 0;
+  }
+  const left = await db.prepare(
+    `SELECT COUNT(*) AS n FROM items WHERE content_html IS NOT NULL AND content_text IS NULL`
+  ).first();
+  return { limit, updated, remaining: Number(left?.n ?? 0) };
+}
+__name(reindexContentText, "reindexContentText");
 async function writeSummary(db, id, summary, at) {
   await db.prepare(
     `UPDATE items
@@ -838,121 +1037,6 @@ function parseFeed(xml) {
   return entries.filter((entry) => entry !== null);
 }
 __name(parseFeed, "parseFeed");
-
-// src/score.ts
-var MIN_QUALITY_SCORE = 40;
-var TOPICS = [
-  {
-    id: "bank",
-    label: "\u6D77\u5916\u5F00\u5361",
-    patterns: [
-      { re: /港卡|香港银行|香港银行卡|汇丰|中银香港|众安银行|蚂蚁银行|天星银行|虚拟银行|银行卡开户/i, weight: 28, primary: true },
-      { re: /开户|U\s*卡|虚拟卡|\bWise\b|万里汇|收款账户/i, weight: 14 }
-    ]
-  },
-  {
-    id: "sim",
-    label: "\u6D77\u5916\u624B\u673A\u5361",
-    patterns: [
-      { re: /紫卡|giffgaff|保号|eSIM|香港手机号|电话卡|手机卡|Club\s*SIM|英国号|香港号/i, weight: 28, primary: true },
-      { re: /验证码|漫游|实名/i, weight: 8 }
-    ]
-  },
-  {
-    id: "tax",
-    label: "\u6D77\u5916\u7A0E\u53F7",
-    patterns: [
-      { re: /\bITIN\b|税号|税务居民|\bTIN\b|报税|W-7/i, weight: 28, primary: true },
-      { re: /税务|增值税|电子居民/i, weight: 12 }
-    ]
-  },
-  {
-    id: "ai",
-    label: "\u6D77\u5916 AI \u8BA2\u9605",
-    patterns: [
-      { re: /ChatGPT|Claude|OpenAI|Apple\s*ID|美区|外区|Gemini/i, weight: 26, primary: true },
-      { re: /订阅|Plus|礼品卡|虚拟卡/i, weight: 10 }
-    ]
-  },
-  {
-    id: "visa",
-    label: "\u6570\u5B57\u6E38\u6C11\u7B7E\u8BC1",
-    patterns: [
-      { re: /数字游民签证|數位遊牧簽證|游民签证|DNV|居留许可/i, weight: 30, primary: true },
-      { re: /签证|簽證|居留|永居|移民|电子居民/i, weight: 16 }
-    ]
-  },
-  {
-    id: "remote",
-    label: "\u8FDC\u7A0B\u5DE5\u4F5C",
-    patterns: [
-      { re: /远程工作|遠端工作|远程办公|数字游民|數位遊牧/i, weight: 24, primary: true },
-      { re: /自由职业|一人公司|异步办公/i, weight: 12 }
-    ]
-  },
-  {
-    id: "broker",
-    label: "\u6D77\u5916\u5238\u5546",
-    patterns: [
-      { re: /券商|盈透|\bIBKR\b|富途|老虎证券|美股开户|港股通|出入金/i, weight: 28, primary: true },
-      { re: /美股|港股|经纪账户/i, weight: 12 }
-    ]
-  }
-];
-var TOPIC_BY_ID = new Map(TOPICS.map((topic) => [topic.id, topic]));
-function topicById(id) {
-  return TOPIC_BY_ID.get(id);
-}
-__name(topicById, "topicById");
-var GUIDE = /指南|教程|攻略|手把手|实测|流程|步骤|如何|开户|保号|申请/;
-var CHATTER = /呢[？?]?$|大家怎么|请问|求助|吐槽|闲聊|空虚|摸鱼|各位都在/;
-var REJECT = /招聘|内推|招一位|招人|岗位更新|接单|外包|美工|诚邀|派单|月薪|底薪|急招|在招|兼职/;
-function scoreQuality(title, excerpt, popularity2 = 0) {
-  const haystack = `${title}
-${excerpt}`;
-  if (REJECT.test(haystack)) {
-    return { topic: "", score: 0, rejected: true, reason: "\u62DB\u8058\u3001\u6D3E\u5355\u6216\u5E7F\u544A" };
-  }
-  let bestId = "";
-  let best = 0;
-  let primaryInTitle = false;
-  for (const topic of TOPICS) {
-    let points = 0;
-    let primary = false;
-    for (const pattern of topic.patterns) {
-      if (!pattern.re.test(haystack)) continue;
-      points += pattern.weight;
-      if (pattern.primary && pattern.re.test(title)) primary = true;
-    }
-    if (points > best) {
-      best = points;
-      bestId = topic.id;
-      primaryInTitle = primary;
-    }
-  }
-  if (!bestId || best < 12) {
-    return { topic: "", score: best, rejected: false, reason: "\u6CA1\u6709\u5BF9\u4E0A\u6838\u5FC3\u4E3B\u9898" };
-  }
-  const length = Array.from(excerpt).length;
-  const lengthScore = length >= 180 ? 18 : length >= 100 ? 12 : length >= 40 ? 6 : 0;
-  const guideScore = GUIDE.test(haystack) ? 16 : 0;
-  const titleScore = primaryInTitle ? 14 : 0;
-  const engagement = popularity2 >= 20 ? 10 : popularity2 >= 5 ? 6 : popularity2 >= 1 ? 3 : 0;
-  const chatterPenalty = CHATTER.test(title) && !/指南|教程|攻略|实测/.test(title) ? 24 : 0;
-  const score = best + lengthScore + guideScore + titleScore + engagement - chatterPenalty;
-  return {
-    topic: bestId,
-    score,
-    rejected: false,
-    reason: `\u4E3B\u9898${best}+\u7BC7\u5E45${lengthScore}+\u6307\u5357${guideScore}+\u6807\u9898${titleScore}+\u70ED\u5EA6${engagement}-\u95F2\u804A${chatterPenalty}`
-  };
-}
-__name(scoreQuality, "scoreQuality");
-function passesQuality(title, excerpt, popularity2 = 0) {
-  const quality = scoreQuality(title, excerpt, popularity2);
-  return !quality.rejected && quality.score >= MIN_QUALITY_SCORE && quality.topic !== "";
-}
-__name(passesQuality, "passesQuality");
 
 // src/tags.ts
 var TAGS = [
@@ -1567,6 +1651,49 @@ async function listClassics(db, topic) {
   return rows.results ?? [];
 }
 __name(listClassics, "listClassics");
+function searchWhere(query) {
+  const pattern = likePattern(query);
+  const topics = topicIdsFor(query);
+  const parts = [
+    "title LIKE ? ESCAPE '\\'",
+    "ifnull(ai_summary, '') LIKE ? ESCAPE '\\'",
+    "excerpt LIKE ? ESCAPE '\\'",
+    "source_name LIKE ? ESCAPE '\\'",
+    "topic LIKE ? ESCAPE '\\'",
+    "ifnull(content_text, '') LIKE ? ESCAPE '\\'"
+  ];
+  const binds = [pattern, pattern, pattern, pattern, pattern, pattern];
+  if (topics.length) {
+    parts.push(`topic IN (${topics.map(() => "?").join(", ")})`);
+    binds.push(...topics);
+  }
+  return { sql: parts.join(" OR "), binds };
+}
+__name(searchWhere, "searchWhere");
+async function countSearch(db, query) {
+  const where = searchWhere(query);
+  const row = await db.prepare(`SELECT COUNT(*) AS n FROM items WHERE ${where.sql}`).bind(...where.binds).first();
+  return Number(row?.n ?? 0);
+}
+__name(countSearch, "countSearch");
+async function searchItems(db, query, page) {
+  const where = searchWhere(query);
+  const offset = (page - 1) * SEARCH_PAGE_SIZE;
+  const rows = await db.prepare(
+    `SELECT ${ITEM_COLUMNS},
+         substr(
+           ifnull(content_text, ''),
+           max(1, instr(lower(ifnull(content_text, '')), lower(?)) - 24),
+           96
+         ) AS content_snippet
+       FROM items
+       WHERE ${where.sql}
+       ORDER BY collected_at DESC, popularity DESC, id DESC
+       LIMIT ? OFFSET ?`
+  ).bind(query, ...where.binds, SEARCH_PAGE_SIZE, offset).all();
+  return rows.results ?? [];
+}
+__name(searchItems, "searchItems");
 
 // src/styles.ts
 var CSS = `
@@ -1682,6 +1809,28 @@ main { flex: 1; padding: 1.4rem 0 3rem; }
 }
 button { cursor: pointer; border-radius: 999px; }
 select { border-radius: 999px; background: var(--paper-2); border-color: var(--line); }
+form.search { display: flex; gap: 0.5rem; margin: 0.85rem 0 0; }
+form.search label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+form.search input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 0.55rem 0.95rem;
+}
+mark { background: #f3df9a; color: inherit; padding: 0 0.12em; border-radius: 0.15em; }
+@media (prefers-color-scheme: dark) {
+  mark { background: #6a5420; }
+}
 .source-form { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .source-form label { color: var(--muted); font-size: 0.92rem; }
 .count { color: var(--muted); font-size: 0.92rem; margin: 0; }
@@ -1884,8 +2033,16 @@ function popularity(item) {
   return `${item.popularity} ${item.popularity_label}`;
 }
 __name(popularity, "popularity");
+function searchForm(query) {
+  return `<form class="search" method="get" action="/search" role="search">
+    <label for="q">\u641C\u7D22</label>
+    <input id="q" name="q" type="search" value="${esc(query)}" placeholder="\u641C\u7D22\u6807\u9898\u3001\u6458\u8981\u6216\u6B63\u6587" maxlength="80" enterkeyhint="search">
+    <button type="submit">\u641C\u7D22</button>
+  </form>`;
+}
+__name(searchForm, "searchForm");
 function layout(options) {
-  const onHome = options.path === "/" || options.path.startsWith("/?");
+  const onHome = !options.query && (options.path === "/" || options.path.startsWith("/?"));
   const fullTitle = onHome ? "\u6E38\u7267\u624B\u8BB0" : `${options.title} \xB7 \u6E38\u7267\u624B\u8BB0`;
   const canonical = `${options.origin}${options.path === "/" ? "/" : options.path}`;
   return `<!DOCTYPE html>
@@ -1920,6 +2077,7 @@ function layout(options) {
       </nav>
     </div>
     <p class="deck">\u6BCF\u5929\u6574\u7406\u4E2D\u6587\u6570\u5B57\u6E38\u6C11\u6307\u5357\u3002\u70B9\u6807\u9898\u8BFB\u5168\u6587\uFF0C\u6587\u9996\u548C\u6587\u672B\u90FD\u5199\u7740\u51FA\u5904\uFF1B\u5217\u8868\u4E0A\u4F18\u5148\u663E\u793A AI \u6458\u8981\u3002</p>
+    ${searchForm(options.query ?? "")}
   </div>
 </header>
 <main id="content" class="wrap">${options.body}</main>
@@ -1983,17 +2141,20 @@ function filters(view) {
   </form>`;
 }
 __name(filters, "filters");
-function itemCard(item, index, sourceFilter) {
+function itemCard(item, index, sourceFilter, query = "") {
   const bits = [
     popularity(item),
     item.published_at ? `\u53D1\u5E03\u4E8E ${shanghaiLabel(item.published_at, false)}` : "",
     item.language === "zh" ? "\u4E2D\u6587" : "EN"
   ].filter(Boolean);
+  const summary = query ? cardSnippet(item, query) : item.ai_summary || item.excerpt || "";
+  const summaryHtml = query ? highlight(summary, query) : esc(summary);
+  const titleHtml = query ? highlight(item.title, query) : esc(item.title);
   return `<article class="item">
     <div class="index">${String(index).padStart(2, "0")}</div>
     <div>
-      <h3><a href="/a/${item.id}">${esc(item.title)}</a></h3>
-      ${item.ai_summary ? `<p class="excerpt"><span class="ai-mark">AI \u6458\u8981</span> ${esc(item.ai_summary)}</p>` : item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
+      <h3><a href="/a/${item.id}">${titleHtml}</a></h3>
+      ${summary ? `<p class="excerpt">${!query && item.ai_summary ? `<span class="ai-mark">AI \u6458\u8981</span> ` : ""}${summaryHtml}</p>` : ""}
       <p class="attr">${attribution(item)}</p>
       ${tagLinks(item, sourceFilter)}
       <p class="submeta">${esc(bits.join(" \xB7 "))}</p>
@@ -2046,6 +2207,34 @@ function renderHome(view, origin) {
   });
 }
 __name(renderHome, "renderHome");
+function searchHref(base, q, page) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (page > 1) params.set("page", String(page));
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
+}
+__name(searchHref, "searchHref");
+function renderSearch(view, origin) {
+  const pages = pageCount(view.total, SEARCH_PAGE_SIZE);
+  const cards = view.items.map((item, index) => itemCard(item, (view.page - 1) * SEARCH_PAGE_SIZE + index + 1, "", view.q)).join("");
+  const list = view.q ? cards || `<div class="empty"><p>\u6CA1\u6709\u627E\u5230\u4E0E\u300C${esc(view.q)}\u300D\u76F8\u5173\u7684\u6761\u76EE\u3002</p></div>` : `<div class="empty"><p>\u8BF7\u8F93\u5165\u5173\u952E\u8BCD\u3002\u53EF\u4EE5\u641C\u6807\u9898\u3001\u6458\u8981\u3001\u6765\u6E90\u3001\u4E3B\u9898\u548C\u6B63\u6587\u3002</p></div>`;
+  const prev = view.page > 1 ? `<a href="${esc(searchHref(view.basePath, view.q, view.page - 1))}">\u4E0A\u4E00\u9875</a>` : `<span>\u4E0A\u4E00\u9875</span>`;
+  const next = view.page < pages && view.q ? `<a href="${esc(searchHref(view.basePath, view.q, view.page + 1))}">\u4E0B\u4E00\u9875</a>` : `<span>\u4E0B\u4E00\u9875</span>`;
+  const body = `<h2 class="daily-heading">\u641C\u7D22\u7ED3\u679C</h2>
+    <p class="count">${view.q ? `\u5171 ${view.total} \u7BC7 \xB7 \u300C${esc(view.q)}\u300D \xB7 \u7B2C ${view.page} / ${pages} \u9875` : "\u8F93\u5165\u5173\u952E\u8BCD\u540E\u641C\u7D22\u5168\u7AD9\u3002"}</p>
+    ${list}
+    ${view.q && view.total > SEARCH_PAGE_SIZE ? `<nav class="pager" aria-label="\u5206\u9875">${prev}<span>\u7B2C ${view.page} / ${pages} \u9875</span>${next}</nav>` : ""}`;
+  return layout({
+    title: view.q ? `\u641C\u7D22 ${view.q}` : "\u641C\u7D22",
+    description: view.q ? `\u641C\u7D22\u300C${view.q}\u300D\u7684\u7ED3\u679C\u3002` : "\u641C\u7D22\u6E38\u7267\u624B\u8BB0\u3002",
+    path: searchHref(view.basePath, view.q, view.page),
+    body,
+    origin,
+    query: view.q
+  });
+}
+__name(renderSearch, "renderSearch");
 function renderItem(item, origin) {
   const bits = [
     popularity(item),
@@ -2202,6 +2391,30 @@ function bearerOk(header, token) {
   return diff === 0;
 }
 __name(bearerOk, "bearerOk");
+function searchHref2(base, q, page) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (page > 1) params.set("page", String(page));
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
+}
+__name(searchHref2, "searchHref");
+async function searchResponse(url, env, origin) {
+  const basePath = url.pathname === "/search" ? "/search" : "/";
+  const q = normalizeSearchQuery(url.searchParams.get("q"));
+  if (!q) {
+    return html(renderSearch({ q: "", items: [], total: 0, page: 1, basePath }, origin));
+  }
+  const requested = parsePage(url.searchParams.get("page"));
+  const total = await countSearch(env.DB, q);
+  const page = normalizePage(requested, total, SEARCH_PAGE_SIZE);
+  if (url.searchParams.has("page") && page !== requested) {
+    return redirect(searchHref2(basePath, q, page));
+  }
+  const items = await searchItems(env.DB, q, page);
+  return html(renderSearch({ q, items, total, page, basePath }, origin), 200, "public, max-age=60");
+}
+__name(searchResponse, "searchResponse");
 function redirect(location) {
   return new Response(null, {
     status: 302,
@@ -2238,6 +2451,9 @@ async function handle(request, env) {
       if (url.pathname === "/admin/summarize") {
         return json({ ok: true, ...await fillMissingSummaries(env, parseBatchLimit(url.searchParams.get("limit"))) });
       }
+      if (url.pathname === "/admin/reindex") {
+        return json({ ok: true, ...await reindexContentText(env.DB, parseReindexLimit(url.searchParams.get("limit"))) });
+      }
       return json({ error: "not found" }, 404);
     }
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -2265,6 +2481,9 @@ async function handle(request, env) {
       const item = await getItem(env.DB, id);
       if (!item) return html(renderNotFound(origin), 404, "no-store");
       return html(renderItem(item, origin), 200, "public, max-age=600");
+    }
+    if (url.pathname === "/search" || url.pathname === "/" && normalizeSearchQuery(url.searchParams.get("q"))) {
+      return searchResponse(url, env, origin);
     }
     if (url.pathname === "/") {
       const source = knownSource(url.searchParams.get("source") ?? "")?.id ?? "";

@@ -1,7 +1,8 @@
 import { runBackfill } from "./backfill";
 import { purgeItems, runCollect } from "./collect";
-import { fillMissingContent, fillMissingSummaries, parseBatchLimit } from "./fulltext";
-import { countItems, getItem, listClassics, listItems, normalizePage, PAGE_SIZE, parsePage, recentItems } from "./queries";
+import { fillMissingContent, fillMissingSummaries, parseBatchLimit, parseReindexLimit, reindexContentText } from "./fulltext";
+import { countItems, countSearch, getItem, listClassics, listItems, normalizePage, PAGE_SIZE, parsePage, recentItems, searchItems } from "./queries";
+import { SEARCH_PAGE_SIZE, normalizeSearchQuery } from "./search";
 import { topicById } from "./score";
 import {
   renderAbout,
@@ -10,6 +11,7 @@ import {
   renderItem,
   renderNotFound,
   renderRss,
+  renderSearch,
 } from "./render";
 import { knownSource } from "./sources";
 import { knownTag } from "./tags";
@@ -55,6 +57,30 @@ export function bearerOk(header: string | null, token: string | undefined): bool
   return diff === 0;
 }
 
+function searchHref(base: string, q: string, page: number): string {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (page > 1) params.set("page", String(page));
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
+}
+
+async function searchResponse(url: URL, env: Env, origin: string): Promise<Response> {
+  const basePath = url.pathname === "/search" ? "/search" : "/";
+  const q = normalizeSearchQuery(url.searchParams.get("q"));
+  if (!q) {
+    return html(renderSearch({ q: "", items: [], total: 0, page: 1, basePath }, origin));
+  }
+  const requested = parsePage(url.searchParams.get("page"));
+  const total = await countSearch(env.DB, q);
+  const page = normalizePage(requested, total, SEARCH_PAGE_SIZE);
+  if (url.searchParams.has("page") && page !== requested) {
+    return redirect(searchHref(basePath, q, page));
+  }
+  const items = await searchItems(env.DB, q, page);
+  return html(renderSearch({ q, items, total, page, basePath }, origin), 200, "public, max-age=60");
+}
+
 function redirect(location: string): Response {
   return new Response(null, {
     status: 302,
@@ -91,6 +117,9 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (url.pathname === "/admin/summarize") {
         return json({ ok: true, ...(await fillMissingSummaries(env, parseBatchLimit(url.searchParams.get("limit")))) });
       }
+      if (url.pathname === "/admin/reindex") {
+        return json({ ok: true, ...(await reindexContentText(env.DB, parseReindexLimit(url.searchParams.get("limit")))) });
+      }
       return json({ error: "not found" }, 404);
     }
 
@@ -122,6 +151,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const item = await getItem(env.DB, id);
       if (!item) return html(renderNotFound(origin), 404, "no-store");
       return html(renderItem(item, origin), 200, "public, max-age=600");
+    }
+
+    if (url.pathname === "/search" || (url.pathname === "/" && normalizeSearchQuery(url.searchParams.get("q")))) {
+      return searchResponse(url, env, origin);
     }
 
     if (url.pathname === "/") {
