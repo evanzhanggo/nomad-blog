@@ -1,0 +1,2 @@
+# 复制为 .dev.vars 后供 `wrangler dev` 读取。这不是生产密钥。
+ADMIN_TOKEN=dev-admin-token
