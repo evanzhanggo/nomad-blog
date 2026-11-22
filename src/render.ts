@@ -94,9 +94,8 @@ function layout(options: {
         <a href="/rss.xml">RSS</a>
       </nav>
     </div>
-    <p class="deck">每天从公开网页整理数字游民、远程工作、签证和旅居相关的热门内容。这里只放标题、三百字以内的摘要，以及回到原文的链接。</p>
+    <p class="deck">每天从公开网页整理中文的数字游民、远程工作、签证和旅居内容。这里只放标题、三百字以内的摘要，以及回到原文的链接。</p>
   </div>
-  <div class="rule"></div>
 </header>
 <main id="content" class="wrap">${options.body}</main>
 <footer class="site">
@@ -161,7 +160,7 @@ export function renderHome(view: HomeView, origin: string): string {
   if (!view.items.length) {
     list = `<div class="empty"><p>${
       view.total === 0 && !view.source && !view.tag
-        ? "还没有收录。每天北京时间 08:00 会自动收集一次。本地调试可以调用管理接口手动跑一轮。"
+        ? "还没有收录。每天北京时间 08:00 和 22:00 会各收集一次。本地调试可以调用管理接口手动跑一轮。"
         : "没有符合筛选条件的条目。"
     }</p></div>`;
   } else {
@@ -246,9 +245,9 @@ export function renderAbout(origin: string): string {
   ).join("");
   const body = `<article class="about">
     <h1>关于游牧手记</h1>
-    <p>这是给中文读者的一份数字游民日更。它不生产原创长文，只在每天固定时间去几个公开、可订阅的来源看一眼，把当天相对受关注的指南、讨论和远程职位挑出来，留下标题、短摘要和出处。</p>
+    <p>这是给中文读者的一份数字游民日更。它不生产原创长文，只收录标题以中文为主的公开内容，留下标题、短摘要和出处。</p>
     <h2>每天怎么更新</h2>
-    <p>同一个 Cloudflare Worker 在 UTC 00:00（北京时间 08:00）跑一次采集。每个来源单独请求、单独超时；某一个打不开，不会让整轮停掉。同一篇原文只保留一次，按热度信号和新鲜程度挑出大约 16 条新内容写进数据库。</p>
+    <p>同一个 Cloudflare Worker 在北京时间 08:00 和 22:00 各跑一次采集。两次都写进当天的分组，每次最多新增大约 16 条，已经收录过的链接会跳过。每个来源单独请求、单独超时；某一个打不开，不会让整轮停掉。</p>
     <h2>页面上有什么</h2>
     <ul>
       <li>首页按收录日分组，可以按来源和主题筛选，也可以翻页。</li>
@@ -259,7 +258,7 @@ export function renderAbout(origin: string): string {
     <p>不抓正文，也不把全文放进数据库。摘要来自来源自己的描述、简介或帖子开头，截到 300 个字符。作者未知时会写成「未知」，不会把转帖的人说成原作者。</p>
     <h2>现在的来源</h2>
     <ul>${sources}</ul>
-    <p>Reddit、Nomad List 的博客订阅和 Remote OK 的博客订阅在接入时没有可用的公开 feed，所以没有收进来。Remote OK 用的是它公开的职位接口，只留下标注为全球远程、并且看起来是设计、工程、产品这类可以异地做的职位。</p>
+    <p>英文来源已经拿掉。V2EX 的官方接口从 Cloudflare 的地址访问会返回 403，所以也不直接抓。标题里汉字不够多的条目会被跳过。</p>
     <h2>版权</h2>
     <p>标题、摘要和链接只为了方便你决定要不要点回去。内容著作权归原作者所有。若要阅读，请使用每条记录上的原文链接。</p>
   </article>`;

@@ -6,7 +6,7 @@ var TAGS = [
   {
     id: "visa",
     label: "\u7B7E\u8BC1",
-    pattern: /visa|passport|residency|golden visa|nomad visa|dnv|移民签|签证|居留|永居|国籍|数字游民签/i
+    pattern: /visa|passport|residency|golden visa|nomad visa|dnv|移民|签证|簽證|居留|永居|国籍|电子居民|電子居民|数字游民签|數位遊牧簽/i
   },
   {
     id: "taxes",
@@ -288,25 +288,25 @@ async function fetchText(url, timeoutMs = 12e3) {
   return new TextDecoder("utf-8").decode(buffer);
 }
 __name(fetchText, "fetchText");
-async function fetchJson(url, timeoutMs = 12e3) {
-  const text = await fetchText(url, timeoutMs);
-  const trimmed = text.trimStart();
-  if (trimmed.startsWith("<")) throw new Error("expected JSON, got HTML");
-  return JSON.parse(text);
-}
-__name(fetchJson, "fetchJson");
 
 // src/item.ts
 var BLOCKED = /remote code execution|\brce\b|\bcve-\d|vulnerability|exploit|buffer overflow|privilege escalation/i;
 function detectLanguage(title, excerpt) {
-  const cjk = `${title}${excerpt}`.match(/[\u4e00-\u9fff]/g);
-  return cjk && cjk.length >= 2 ? "zh" : "en";
+  return isPredominantlyChinese(title) || isPredominantlyChinese(excerpt) ? "zh" : "en";
 }
 __name(detectLanguage, "detectLanguage");
+function isPredominantlyChinese(title) {
+  const cjk = title.match(/[\u4e00-\u9fff]/g)?.length ?? 0;
+  const latin = title.match(/[A-Za-z]/g)?.length ?? 0;
+  if (cjk < 4) return false;
+  return cjk / (cjk + latin) >= 0.45;
+}
+__name(isPredominantlyChinese, "isPredominantlyChinese");
 function buildDraft(input) {
   const title = clip(plainTitle(input.title), 200);
   const canonical = canonicalUrl(input.url);
   if (!title || !canonical) return null;
+  if (!isPredominantlyChinese(title)) return null;
   if (BLOCKED.test(title)) return null;
   const excerpt = excerptOf(input.excerpt ?? "", title);
   const publishedAt = toIso(input.publishedAt);
@@ -418,171 +418,18 @@ function parseFeed(xml) {
 __name(parseFeed, "parseFeed");
 
 // src/sources.ts
-var HN_BLOCK = /remote code execution|\brce\b|\bcve-\d|vulnerability|exploit|buffer overflow|who is hiring|who wants to be hired|seeking freelancer/i;
-var MEDIUM_REMOTE = /nomad|visa|abroad|cowork|coliving|wi-?fi|anywhere|passport|旅居|数字游民|签证|location[- ]independent/i;
-var NOMAD_JOB = /engineer|developer|designer|\bdesign\b|writer|writing|marketing|product|support|devops|software|frontend|backend|full[- ]?stack|\bdata\b|programmer/i;
-var CLINICAL = /physician|nurse|medical|clinical|pharmacist|therapist|dentist|health assessment|\bdoctor\b/i;
+var NOMAD_TOPIC = /数字游民|數位遊牧|数位游牧|游民|遊牧|远程|遠端|遠程|签证|簽證|旅居|海外|自由职业|自由職業|一人公司|居留|移民|电子居民|電子居民|税务|稅務|nomad/i;
 function top(items, limit) {
   const ready = dedupeDrafts(items.filter((item) => item !== null)).sort(byRank);
   if (!ready.length) throw new Error("no items");
   return ready.slice(0, limit);
 }
 __name(top, "top");
-function siteLabel(url, fallback) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "") || fallback;
-  } catch {
-    return fallback;
-  }
-}
-__name(siteLabel, "siteLabel");
-function hnUrl(query, since, byDate) {
-  const url = new URL(
-    byDate ? "https://hn.algolia.com/api/v1/search_by_date" : "https://hn.algolia.com/api/v1/search"
-  );
-  url.searchParams.set("query", query);
-  url.searchParams.set("tags", "story");
-  url.searchParams.set("hitsPerPage", "15");
-  url.searchParams.set("numericFilters", `created_at_i>${since},points>0`);
-  return url.toString();
-}
-__name(hnUrl, "hnUrl");
-function mapHn(hit) {
-  if (!hit.title || !hit.objectID || HN_BLOCK.test(hit.title)) return null;
-  const discussion = `https://news.ycombinator.com/item?id=${hit.objectID}`;
-  let self = !hit.url;
-  if (hit.url) {
-    try {
-      self = new URL(hit.url).hostname.replace(/^www\./, "") === "news.ycombinator.com";
-    } catch {
-      self = true;
-    }
-  }
-  return buildDraft({
-    url: self ? discussion : hit.url,
-    title: hit.title,
-    excerpt: hit.story_text ?? "",
-    sourceId: "hn",
-    sourceName: self ? "Hacker News" : siteLabel(hit.url, "Hacker News"),
-    author: self ? hit.author ?? null : null,
-    publishedAt: hit.created_at,
-    popularity: hit.points ?? 0,
-    popularityLabel: "\u5206",
-    discussionUrl: self ? null : discussion,
-    commentBonus: Math.round((hit.num_comments ?? 0) * 0.2)
-  });
-}
-__name(mapHn, "mapHn");
-async function fetchHn() {
-  const now = Math.floor(Date.now() / 1e3);
-  const queries = [
-    { q: '"digital nomad"', since: now - 540 * 86400 },
-    { q: '"nomad visa"', since: now - 540 * 86400 },
-    { q: '"remote work"', since: now - 120 * 86400 },
-    { q: '"digital nomad"', since: now - 120 * 86400, byDate: true }
-  ];
-  const results = await Promise.allSettled(
-    queries.map(async (query) => {
-      const data = await fetchJson(hnUrl(query.q, query.since, Boolean(query.byDate)));
-      return data.hits ?? [];
-    })
-  );
-  const hits = [];
-  const errors = [];
-  for (const result of results) {
-    if (result.status === "fulfilled") hits.push(...result.value);
-    else errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
-  }
-  if (errors.length) console.error(`hn partial: ${errors.join(" | ")}`);
-  try {
-    return top(hits.map(mapHn), 12);
-  } catch (error) {
-    throw new Error(errors.join(" | ") || (error instanceof Error ? error.message : "no items"));
-  }
-}
-__name(fetchHn, "fetchHn");
-function mapDev(article) {
-  const url = article.canonical_url || article.url;
-  if (!article.title || !url) return null;
-  const host = siteLabel(url, "dev.to");
-  return buildDraft({
-    url,
-    title: article.title,
-    excerpt: article.description ?? "",
-    sourceId: "devto",
-    sourceName: host === "dev.to" ? "dev.to" : host,
-    author: article.user?.name || article.user?.username || null,
-    publishedAt: article.published_at,
-    popularity: article.positive_reactions_count ?? article.public_reactions_count ?? 0,
-    popularityLabel: "\u53CD\u5E94",
-    commentBonus: Math.round((article.comments_count ?? 0) * 0.5)
-  });
-}
-__name(mapDev, "mapDev");
-async function fetchDevto() {
-  const urls = [
-    "https://dev.to/api/articles?tag=digitalnomad&per_page=15",
-    "https://dev.to/api/articles?tag=remotework&per_page=10&top=7"
-  ];
-  const results = await Promise.allSettled(urls.map((url) => fetchJson(url)));
-  const articles = [];
-  const errors = [];
-  for (const result of results) {
-    if (result.status === "fulfilled" && Array.isArray(result.value)) articles.push(...result.value);
-    else if (result.status === "rejected") {
-      errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
-    } else errors.push("dev.to response was not a list");
-  }
-  if (errors.length) console.error(`devto partial: ${errors.join(" | ")}`);
-  try {
-    return top(articles.map(mapDev), 12);
-  } catch (error) {
-    throw new Error(errors.join(" | ") || (error instanceof Error ? error.message : "no items"));
-  }
-}
-__name(fetchDevto, "fetchDevto");
-async function fetchMedium() {
-  const feeds = [
-    { url: "https://medium.com/feed/tag/digital-nomad", filter: false },
-    { url: "https://medium.com/feed/tag/remote-work", filter: true }
-  ];
-  const results = await Promise.allSettled(
-    feeds.map(async (feed) => {
-      const entries = parseFeed(await fetchText(feed.url)).filter(
-        (entry) => !feed.filter || MEDIUM_REMOTE.test(`${entry.title} ${entry.excerpt}`)
-      );
-      return entries.map(
-        (entry) => buildDraft({
-          url: entry.url,
-          title: entry.title,
-          excerpt: entry.excerpt,
-          sourceId: "medium",
-          sourceName: "Medium",
-          author: entry.author,
-          publishedAt: entry.publishedAt
-        })
-      );
-    })
-  );
-  const items = [];
-  const errors = [];
-  for (const result of results) {
-    if (result.status === "fulfilled") items.push(...result.value);
-    else errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
-  }
-  if (errors.length) console.error(`medium partial: ${errors.join(" | ")}`);
-  try {
-    return top(items, 10);
-  } catch (error) {
-    throw new Error(errors.join(" | ") || (error instanceof Error ? error.message : "no items"));
-  }
-}
-__name(fetchMedium, "fetchMedium");
-async function fetchRss(options) {
+async function fetchFeed(options) {
   const entries = parseFeed(await fetchText(options.url));
   return top(
-    entries.slice(0, 20).map(
-      (entry) => buildDraft({
+    entries.map((entry) => {
+      const draft = buildDraft({
         url: entry.url,
         title: entry.title,
         excerpt: entry.excerpt,
@@ -590,143 +437,73 @@ async function fetchRss(options) {
         sourceName: options.sourceName,
         author: entry.author ?? options.authorFallback ?? null,
         publishedAt: entry.publishedAt
-      })
-    ),
+      });
+      if (!draft) return null;
+      if (options.topicOnly && !NOMAD_TOPIC.test(`${draft.title}
+${draft.excerpt}`)) return null;
+      return options.tag ? withTag(draft, options.tag) : draft;
+    }),
     options.limit
   );
 }
-__name(fetchRss, "fetchRss");
-async function fetchV2ex(node, sourceId, sourceName) {
-  const data = await fetchJson(
-    `https://www.v2ex.com/api/topics/show.json?node_name=${encodeURIComponent(node)}`
-  );
-  if (!Array.isArray(data)) throw new Error(data.message || "v2ex response was not a list");
-  const tag = sourceId === "v2ex-visa" ? "visa" : "jobs";
-  return top(
-    data.filter((topic) => topic && !topic.deleted && topic.title && topic.url).map(
-      (topic) => withTag(
-        buildDraft({
-          url: topic.url,
-          title: topic.title,
-          excerpt: topic.content ?? "",
-          sourceId,
-          sourceName,
-          author: topic.member?.username ?? null,
-          publishedAt: topic.created ?? null,
-          popularity: topic.replies ?? 0,
-          popularityLabel: "\u56DE\u590D"
-        }),
-        tag
-      )
-    ),
-    8
-  );
-}
-__name(fetchV2ex, "fetchV2ex");
-function worldwideJob(job) {
-  const place = `${job.location ?? ""} ${(job.tags ?? []).join(" ")}`;
-  const role = `${job.position ?? ""} ${(job.tags ?? []).join(" ")}`;
-  if (/us only|uk only|canada only|europe only|north america|\bemea\b|latam|latin america|united states|\busa\b/i.test(place)) {
-    return false;
-  }
-  if (!/worldwide|anywhere|global/i.test(place)) return false;
-  if (CLINICAL.test(role) || !NOMAD_JOB.test(role)) return false;
-  return true;
-}
-__name(worldwideJob, "worldwideJob");
-async function fetchRemoteOk() {
-  const data = await fetchJson("https://remoteok.com/api", 15e3);
-  if (!Array.isArray(data)) throw new Error("remote ok response was not a list");
-  const jobs = data.filter((job) => job.position && job.url && worldwideJob(job)).sort((a, b) => (b.epoch ?? 0) - (a.epoch ?? 0)).slice(0, 12);
-  return top(
-    jobs.map(
-      (job) => withTag(
-        buildDraft({
-          url: job.url,
-          title: job.position,
-          excerpt: job.description ?? "",
-          sourceId: "remoteok",
-          sourceName: "Remote OK",
-          author: job.company ?? null,
-          publishedAt: job.date ?? job.epoch ?? null
-        }),
-        "jobs"
-      )
-    ),
-    8
-  );
-}
-__name(fetchRemoteOk, "fetchRemoteOk");
+__name(fetchFeed, "fetchFeed");
 var SOURCES = [
-  {
-    id: "hn",
-    name: "Hacker News",
-    hint: "https://hn.algolia.com/api/v1/search?query=%22digital%20nomad%22&tags=story",
-    fetch: fetchHn
-  },
-  {
-    id: "devto",
-    name: "dev.to",
-    hint: "https://dev.to/api/articles?tag=digitalnomad",
-    fetch: fetchDevto
-  },
-  {
-    id: "medium",
-    name: "Medium",
-    hint: "https://medium.com/feed/tag/digital-nomad",
-    fetch: fetchMedium
-  },
-  {
-    id: "nomadgate",
-    name: "Nomad Gate",
-    hint: "https://nomadgate.com/feed.xml",
-    fetch: /* @__PURE__ */ __name(() => fetchRss({
-      url: "https://nomadgate.com/feed.xml",
-      sourceId: "nomadgate",
-      sourceName: "Nomad Gate",
-      limit: 8
-    }), "fetch")
-  },
-  {
-    id: "johnnyfd",
-    name: "JohnnyFD",
-    hint: "https://www.johnnyfd.com/feeds/posts/default?alt=rss",
-    fetch: /* @__PURE__ */ __name(() => fetchRss({
-      url: "https://www.johnnyfd.com/feeds/posts/default?alt=rss",
-      sourceId: "johnnyfd",
-      sourceName: "JohnnyFD",
-      authorFallback: "Johnny FD",
-      limit: 6
-    }), "fetch")
-  },
-  {
-    id: "v2ex-remote",
-    name: "V2EX \xB7 \u8FDC\u7A0B\u5DE5\u4F5C",
-    hint: "https://www.v2ex.com/api/topics/show.json?node_name=remote",
-    fetch: /* @__PURE__ */ __name(() => fetchV2ex("remote", "v2ex-remote", "V2EX \xB7 \u8FDC\u7A0B\u5DE5\u4F5C"), "fetch")
-  },
-  {
-    id: "v2ex-visa",
-    name: "V2EX \xB7 \u7B7E\u8BC1",
-    hint: "https://www.v2ex.com/api/topics/show.json?node_name=visa",
-    fetch: /* @__PURE__ */ __name(() => fetchV2ex("visa", "v2ex-visa", "V2EX \xB7 \u7B7E\u8BC1"), "fetch")
-  },
   {
     id: "eleduck",
     name: "\u7535\u9E2D\u793E\u533A",
     hint: "https://eleduck.com/feed/latest.xml",
-    fetch: /* @__PURE__ */ __name(() => fetchRss({
+    fetch: /* @__PURE__ */ __name(() => fetchFeed({
       url: "https://eleduck.com/feed/latest.xml",
       sourceId: "eleduck",
       sourceName: "\u7535\u9E2D\u793E\u533A",
-      limit: 8
+      limit: 10
     }), "fetch")
   },
   {
-    id: "remoteok",
-    name: "Remote OK",
-    hint: "https://remoteok.com/api",
-    fetch: fetchRemoteOk
+    id: "looktheworld",
+    name: "Look the World",
+    hint: "https://www.looktheworld.com/changes.xml",
+    fetch: /* @__PURE__ */ __name(() => fetchFeed({
+      url: "https://www.looktheworld.com/changes.xml",
+      sourceId: "looktheworld",
+      sourceName: "Look the World",
+      limit: 8,
+      tag: "visa"
+    }), "fetch")
+  },
+  {
+    id: "jarodise",
+    name: "\u6570\u5B57\u6E38\u6C11\u90E8\u843D",
+    hint: "https://jarodise.com/rss.xml",
+    fetch: /* @__PURE__ */ __name(() => fetchFeed({
+      url: "https://jarodise.com/rss.xml",
+      sourceId: "jarodise",
+      sourceName: "\u6570\u5B57\u6E38\u6C11\u90E8\u843D",
+      limit: 8,
+      topicOnly: true
+    }), "fetch")
+  },
+  {
+    id: "turtlegirl",
+    name: "\u4E4C\u9F9F\u59B9\u51FA\u8D70\u65C5\u884C",
+    hint: "https://turtlegirltravel.com/category/digital-nomad/feed/",
+    fetch: /* @__PURE__ */ __name(() => fetchFeed({
+      url: "https://turtlegirltravel.com/category/digital-nomad/feed/",
+      sourceId: "turtlegirl",
+      sourceName: "\u4E4C\u9F9F\u59B9\u51FA\u8D70\u65C5\u884C",
+      limit: 6
+    }), "fetch")
+  },
+  {
+    id: "rososa",
+    name: "\u7231\u6C99\u5C3C\u4E9A\u7535\u5B50\u5C45\u6C11\u793E\u533A",
+    hint: "https://rososa.com/feed/",
+    fetch: /* @__PURE__ */ __name(() => fetchFeed({
+      url: "https://rososa.com/feed/",
+      sourceId: "rososa",
+      sourceName: "\u7231\u6C99\u5C3C\u4E9A\u7535\u5B50\u5C45\u6C11\u793E\u533A",
+      limit: 6
+    }), "fetch")
   }
 ];
 function knownSource(id) {
@@ -735,7 +512,7 @@ function knownSource(id) {
 __name(knownSource, "knownSource");
 
 // src/collect.ts
-var DAILY_LIMIT = 16;
+var RUN_LIMIT = 16;
 async function loadSource(source) {
   try {
     const items = dedupeDrafts(await source.fetch()).sort(byRank).slice(0, 12);
@@ -786,7 +563,7 @@ function selectHybrid(items, limit) {
   return picked;
 }
 __name(selectHybrid, "selectHybrid");
-function selectFresh(items, existing, limit = DAILY_LIMIT) {
+function selectFresh(items, existing, limit = RUN_LIMIT) {
   const unique = dedupeDrafts(items);
   const fresh = unique.filter((item) => !existing.has(item.canonicalUrl));
   const picked = selectHybrid(fresh, limit);
@@ -816,7 +593,7 @@ async function runCollect(env, trigger) {
     env.DB,
     [...new Set(pool.map((item) => item.canonicalUrl))]
   );
-  const { picked, duplicates, capped } = selectFresh(pool, existing, DAILY_LIMIT);
+  const { picked, duplicates, capped } = selectFresh(pool, existing, RUN_LIMIT);
   const collectedAt = (/* @__PURE__ */ new Date()).toISOString();
   let inserted = 0;
   if (picked.length) {
@@ -892,6 +669,20 @@ async function runCollect(env, trigger) {
   return report;
 }
 __name(runCollect, "runCollect");
+async function purgeNonChinese(db) {
+  const rows = await db.prepare("SELECT id, title FROM items").all();
+  const all = rows.results ?? [];
+  const ids = all.filter((row) => !isPredominantlyChinese(row.title)).map((row) => row.id);
+  let deleted = 0;
+  for (let index = 0; index < ids.length; index += 80) {
+    const chunk = ids.slice(index, index + 80);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const result = await db.prepare(`DELETE FROM items WHERE id IN (${placeholders})`).bind(...chunk).run();
+    deleted += result.meta?.changes ?? 0;
+  }
+  return { scanned: all.length, deleted };
+}
+__name(purgeNonChinese, "purgeNonChinese");
 
 // src/queries.ts
 var PAGE_SIZE = 20;
@@ -1062,7 +853,6 @@ nav.site { display: flex; gap: 0.9rem; font-size: 0.95rem; }
 nav.site a { color: var(--ink); text-decoration: none; border-bottom: 1px solid transparent; }
 nav.site a:hover, nav.site a[aria-current="page"] { border-bottom-color: var(--stamp); color: var(--stamp); }
 .deck { margin: 0.75rem 0 0; max-width: 46rem; color: var(--muted); }
-.rule { height: 3px; background: linear-gradient(90deg, var(--teal), var(--stamp)); }
 main { flex: 1; padding: 1.4rem 0 3rem; }
 .filters { display: grid; gap: 0.85rem; margin-bottom: 1.3rem; }
 .tag-row, .meta-row { display: flex; gap: 0.45rem; overflow-x: auto; padding-bottom: 0.15rem; }
@@ -1259,9 +1049,8 @@ function layout(options) {
         <a href="/rss.xml">RSS</a>
       </nav>
     </div>
-    <p class="deck">\u6BCF\u5929\u4ECE\u516C\u5F00\u7F51\u9875\u6574\u7406\u6570\u5B57\u6E38\u6C11\u3001\u8FDC\u7A0B\u5DE5\u4F5C\u3001\u7B7E\u8BC1\u548C\u65C5\u5C45\u76F8\u5173\u7684\u70ED\u95E8\u5185\u5BB9\u3002\u8FD9\u91CC\u53EA\u653E\u6807\u9898\u3001\u4E09\u767E\u5B57\u4EE5\u5185\u7684\u6458\u8981\uFF0C\u4EE5\u53CA\u56DE\u5230\u539F\u6587\u7684\u94FE\u63A5\u3002</p>
+    <p class="deck">\u6BCF\u5929\u4ECE\u516C\u5F00\u7F51\u9875\u6574\u7406\u4E2D\u6587\u7684\u6570\u5B57\u6E38\u6C11\u3001\u8FDC\u7A0B\u5DE5\u4F5C\u3001\u7B7E\u8BC1\u548C\u65C5\u5C45\u5185\u5BB9\u3002\u8FD9\u91CC\u53EA\u653E\u6807\u9898\u3001\u4E09\u767E\u5B57\u4EE5\u5185\u7684\u6458\u8981\uFF0C\u4EE5\u53CA\u56DE\u5230\u539F\u6587\u7684\u94FE\u63A5\u3002</p>
   </div>
-  <div class="rule"></div>
 </header>
 <main id="content" class="wrap">${options.body}</main>
 <footer class="site">
@@ -1322,7 +1111,7 @@ function renderHome(view, origin) {
   const filterBits = [activeSource, activeTag].filter(Boolean).join(" \xB7 ");
   let list = "";
   if (!view.items.length) {
-    list = `<div class="empty"><p>${view.total === 0 && !view.source && !view.tag ? "\u8FD8\u6CA1\u6709\u6536\u5F55\u3002\u6BCF\u5929\u5317\u4EAC\u65F6\u95F4 08:00 \u4F1A\u81EA\u52A8\u6536\u96C6\u4E00\u6B21\u3002\u672C\u5730\u8C03\u8BD5\u53EF\u4EE5\u8C03\u7528\u7BA1\u7406\u63A5\u53E3\u624B\u52A8\u8DD1\u4E00\u8F6E\u3002" : "\u6CA1\u6709\u7B26\u5408\u7B5B\u9009\u6761\u4EF6\u7684\u6761\u76EE\u3002"}</p></div>`;
+    list = `<div class="empty"><p>${view.total === 0 && !view.source && !view.tag ? "\u8FD8\u6CA1\u6709\u6536\u5F55\u3002\u6BCF\u5929\u5317\u4EAC\u65F6\u95F4 08:00 \u548C 22:00 \u4F1A\u5404\u6536\u96C6\u4E00\u6B21\u3002\u672C\u5730\u8C03\u8BD5\u53EF\u4EE5\u8C03\u7528\u7BA1\u7406\u63A5\u53E3\u624B\u52A8\u8DD1\u4E00\u8F6E\u3002" : "\u6CA1\u6709\u7B26\u5408\u7B5B\u9009\u6761\u4EF6\u7684\u6761\u76EE\u3002"}</p></div>`;
   } else {
     const groups = [];
     for (const item of view.items) {
@@ -1392,9 +1181,9 @@ function renderAbout(origin) {
   ).join("");
   const body = `<article class="about">
     <h1>\u5173\u4E8E\u6E38\u7267\u624B\u8BB0</h1>
-    <p>\u8FD9\u662F\u7ED9\u4E2D\u6587\u8BFB\u8005\u7684\u4E00\u4EFD\u6570\u5B57\u6E38\u6C11\u65E5\u66F4\u3002\u5B83\u4E0D\u751F\u4EA7\u539F\u521B\u957F\u6587\uFF0C\u53EA\u5728\u6BCF\u5929\u56FA\u5B9A\u65F6\u95F4\u53BB\u51E0\u4E2A\u516C\u5F00\u3001\u53EF\u8BA2\u9605\u7684\u6765\u6E90\u770B\u4E00\u773C\uFF0C\u628A\u5F53\u5929\u76F8\u5BF9\u53D7\u5173\u6CE8\u7684\u6307\u5357\u3001\u8BA8\u8BBA\u548C\u8FDC\u7A0B\u804C\u4F4D\u6311\u51FA\u6765\uFF0C\u7559\u4E0B\u6807\u9898\u3001\u77ED\u6458\u8981\u548C\u51FA\u5904\u3002</p>
+    <p>\u8FD9\u662F\u7ED9\u4E2D\u6587\u8BFB\u8005\u7684\u4E00\u4EFD\u6570\u5B57\u6E38\u6C11\u65E5\u66F4\u3002\u5B83\u4E0D\u751F\u4EA7\u539F\u521B\u957F\u6587\uFF0C\u53EA\u6536\u5F55\u6807\u9898\u4EE5\u4E2D\u6587\u4E3A\u4E3B\u7684\u516C\u5F00\u5185\u5BB9\uFF0C\u7559\u4E0B\u6807\u9898\u3001\u77ED\u6458\u8981\u548C\u51FA\u5904\u3002</p>
     <h2>\u6BCF\u5929\u600E\u4E48\u66F4\u65B0</h2>
-    <p>\u540C\u4E00\u4E2A Cloudflare Worker \u5728 UTC 00:00\uFF08\u5317\u4EAC\u65F6\u95F4 08:00\uFF09\u8DD1\u4E00\u6B21\u91C7\u96C6\u3002\u6BCF\u4E2A\u6765\u6E90\u5355\u72EC\u8BF7\u6C42\u3001\u5355\u72EC\u8D85\u65F6\uFF1B\u67D0\u4E00\u4E2A\u6253\u4E0D\u5F00\uFF0C\u4E0D\u4F1A\u8BA9\u6574\u8F6E\u505C\u6389\u3002\u540C\u4E00\u7BC7\u539F\u6587\u53EA\u4FDD\u7559\u4E00\u6B21\uFF0C\u6309\u70ED\u5EA6\u4FE1\u53F7\u548C\u65B0\u9C9C\u7A0B\u5EA6\u6311\u51FA\u5927\u7EA6 16 \u6761\u65B0\u5185\u5BB9\u5199\u8FDB\u6570\u636E\u5E93\u3002</p>
+    <p>\u540C\u4E00\u4E2A Cloudflare Worker \u5728\u5317\u4EAC\u65F6\u95F4 08:00 \u548C 22:00 \u5404\u8DD1\u4E00\u6B21\u91C7\u96C6\u3002\u4E24\u6B21\u90FD\u5199\u8FDB\u5F53\u5929\u7684\u5206\u7EC4\uFF0C\u6BCF\u6B21\u6700\u591A\u65B0\u589E\u5927\u7EA6 16 \u6761\uFF0C\u5DF2\u7ECF\u6536\u5F55\u8FC7\u7684\u94FE\u63A5\u4F1A\u8DF3\u8FC7\u3002\u6BCF\u4E2A\u6765\u6E90\u5355\u72EC\u8BF7\u6C42\u3001\u5355\u72EC\u8D85\u65F6\uFF1B\u67D0\u4E00\u4E2A\u6253\u4E0D\u5F00\uFF0C\u4E0D\u4F1A\u8BA9\u6574\u8F6E\u505C\u6389\u3002</p>
     <h2>\u9875\u9762\u4E0A\u6709\u4EC0\u4E48</h2>
     <ul>
       <li>\u9996\u9875\u6309\u6536\u5F55\u65E5\u5206\u7EC4\uFF0C\u53EF\u4EE5\u6309\u6765\u6E90\u548C\u4E3B\u9898\u7B5B\u9009\uFF0C\u4E5F\u53EF\u4EE5\u7FFB\u9875\u3002</li>
@@ -1405,7 +1194,7 @@ function renderAbout(origin) {
     <p>\u4E0D\u6293\u6B63\u6587\uFF0C\u4E5F\u4E0D\u628A\u5168\u6587\u653E\u8FDB\u6570\u636E\u5E93\u3002\u6458\u8981\u6765\u81EA\u6765\u6E90\u81EA\u5DF1\u7684\u63CF\u8FF0\u3001\u7B80\u4ECB\u6216\u5E16\u5B50\u5F00\u5934\uFF0C\u622A\u5230 300 \u4E2A\u5B57\u7B26\u3002\u4F5C\u8005\u672A\u77E5\u65F6\u4F1A\u5199\u6210\u300C\u672A\u77E5\u300D\uFF0C\u4E0D\u4F1A\u628A\u8F6C\u5E16\u7684\u4EBA\u8BF4\u6210\u539F\u4F5C\u8005\u3002</p>
     <h2>\u73B0\u5728\u7684\u6765\u6E90</h2>
     <ul>${sources}</ul>
-    <p>Reddit\u3001Nomad List \u7684\u535A\u5BA2\u8BA2\u9605\u548C Remote OK \u7684\u535A\u5BA2\u8BA2\u9605\u5728\u63A5\u5165\u65F6\u6CA1\u6709\u53EF\u7528\u7684\u516C\u5F00 feed\uFF0C\u6240\u4EE5\u6CA1\u6709\u6536\u8FDB\u6765\u3002Remote OK \u7528\u7684\u662F\u5B83\u516C\u5F00\u7684\u804C\u4F4D\u63A5\u53E3\uFF0C\u53EA\u7559\u4E0B\u6807\u6CE8\u4E3A\u5168\u7403\u8FDC\u7A0B\u3001\u5E76\u4E14\u770B\u8D77\u6765\u662F\u8BBE\u8BA1\u3001\u5DE5\u7A0B\u3001\u4EA7\u54C1\u8FD9\u7C7B\u53EF\u4EE5\u5F02\u5730\u505A\u7684\u804C\u4F4D\u3002</p>
+    <p>\u82F1\u6587\u6765\u6E90\u5DF2\u7ECF\u62FF\u6389\u3002V2EX \u7684\u5B98\u65B9\u63A5\u53E3\u4ECE Cloudflare \u7684\u5730\u5740\u8BBF\u95EE\u4F1A\u8FD4\u56DE 403\uFF0C\u6240\u4EE5\u4E5F\u4E0D\u76F4\u63A5\u6293\u3002\u6807\u9898\u91CC\u6C49\u5B57\u4E0D\u591F\u591A\u7684\u6761\u76EE\u4F1A\u88AB\u8DF3\u8FC7\u3002</p>
     <h2>\u7248\u6743</h2>
     <p>\u6807\u9898\u3001\u6458\u8981\u548C\u94FE\u63A5\u53EA\u4E3A\u4E86\u65B9\u4FBF\u4F60\u51B3\u5B9A\u8981\u4E0D\u8981\u70B9\u56DE\u53BB\u3002\u5185\u5BB9\u8457\u4F5C\u6743\u5F52\u539F\u4F5C\u8005\u6240\u6709\u3002\u82E5\u8981\u9605\u8BFB\uFF0C\u8BF7\u4F7F\u7528\u6BCF\u6761\u8BB0\u5F55\u4E0A\u7684\u539F\u6587\u94FE\u63A5\u3002</p>
   </article>`;
@@ -1521,12 +1310,16 @@ async function handle(request, env) {
   const url = new URL(request.url);
   const origin = originOf(request);
   try {
-    if (url.pathname === "/admin/collect") {
+    if (url.pathname === "/admin/collect" || url.pathname === "/admin/purge-non-chinese") {
       if (request.method !== "POST") {
         return json({ error: "method not allowed" }, 405);
       }
       if (!bearerOk(request.headers.get("Authorization"), env.ADMIN_TOKEN)) {
         return json({ error: "unauthorized" }, 401);
+      }
+      if (url.pathname === "/admin/purge-non-chinese") {
+        const result = await purgeNonChinese(env.DB);
+        return json({ ok: true, ...result });
       }
       const report = await runCollect(env, "manual");
       return json(report, 200);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DAILY_LIMIT, loadSource, selectFresh } from "../src/collect";
+import { RUN_LIMIT, loadSource, selectFresh } from "../src/collect";
 import type { Draft, Source } from "../src/types";
 
 function draft(sourceId: string, slug: string, rankScore: number): Draft {
@@ -41,9 +41,9 @@ describe("selectFresh", () => {
 
   it("caps a single source at the daily limit", () => {
     const items = Array.from({ length: 20 }, (_, index) => draft("hn", String(index), 20 - index));
-    const { picked, capped } = selectFresh(items, new Set(), DAILY_LIMIT);
-    expect(picked).toHaveLength(DAILY_LIMIT);
-    expect(capped).toBe(20 - DAILY_LIMIT);
+    const { picked, capped } = selectFresh(items, new Set(), RUN_LIMIT);
+    expect(picked).toHaveLength(RUN_LIMIT);
+    expect(capped).toBe(20 - RUN_LIMIT);
     expect(picked[0]?.rankScore).toBe(20);
   });
 });

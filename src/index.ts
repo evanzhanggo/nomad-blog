@@ -1,4 +1,4 @@
-import { runCollect } from "./collect";
+import { purgeNonChinese, runCollect } from "./collect";
 import { countItems, getItem, listItems, normalizePage, PAGE_SIZE, parsePage, recentItems } from "./queries";
 import {
   renderAbout,
@@ -63,12 +63,16 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const origin = originOf(request);
   try {
-    if (url.pathname === "/admin/collect") {
+    if (url.pathname === "/admin/collect" || url.pathname === "/admin/purge-non-chinese") {
       if (request.method !== "POST") {
         return json({ error: "method not allowed" }, 405);
       }
       if (!bearerOk(request.headers.get("Authorization"), env.ADMIN_TOKEN)) {
         return json({ error: "unauthorized" }, 401);
+      }
+      if (url.pathname === "/admin/purge-non-chinese") {
+        const result = await purgeNonChinese(env.DB);
+        return json({ ok: true, ...result });
       }
       const report = await runCollect(env, "manual");
       return json(report, 200);

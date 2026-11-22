@@ -10,7 +10,7 @@ export const TAGS: TagDef[] = [
     id: "visa",
     label: "签证",
     pattern:
-      /visa|passport|residency|golden visa|nomad visa|dnv|移民签|签证|居留|永居|国籍|数字游民签/i,
+      /visa|passport|residency|golden visa|nomad visa|dnv|移民|签证|簽證|居留|永居|国籍|电子居民|電子居民|数字游民签|數位遊牧簽/i,
   },
   {
     id: "taxes",

@@ -40,6 +40,8 @@ describe("pages", () => {
       origin,
     );
     expect(html).toContain("lang=\"zh-CN\"");
+    expect(html).not.toContain("class=\"rule\"");
+    expect(html).not.toContain("linear-gradient(90deg, var(--teal), var(--stamp))");
     expect(html).toContain("收录于");
     expect(html).toContain("来源：<strong>Nomad Gate</strong> · 作者：<strong>未知</strong> · <a href=\"https://nomadgate.com/portugal-visa\"");
     expect(html).toContain(">原文链接</a>");
@@ -62,8 +64,9 @@ describe("pages", () => {
   it("renders about and an rss item that points back to the original", () => {
     const about = renderAbout(origin);
     expect(about).toContain("不转载全文");
-    expect(about).toContain("Hacker News");
     expect(about).toContain("电鸭社区");
+    expect(about).toContain("数字游民部落");
+    expect(about).not.toContain("Hacker News");
     expect(about).toContain("著作权归原作者所有");
 
     const rss = renderRss([row()], origin);
@@ -115,6 +118,14 @@ describe("pages", () => {
 
     const missingPage = await handle(new Request(`${origin}/nope`), env);
     expect(missingPage.status).toBe(404);
+
+    const purge = await handle(new Request(`${origin}/admin/purge-non-chinese`, { method: "POST" }), env);
+    expect(purge.status).toBe(401);
+    const purgeGet = await handle(
+      new Request(`${origin}/admin/purge-non-chinese`, { headers: { Authorization: "Bearer secret" } }),
+      env,
+    );
+    expect(purgeGet.status).toBe(405);
   });
 });
 

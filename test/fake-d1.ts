@@ -22,22 +22,25 @@ export function createTestDb(): D1Database {
     return { success: true as const, meta: { changes: Number(info.changes ?? 0) } };
   };
 
+  const statement = (sql: string, args: unknown[]): Bound => ({
+    sql,
+    args,
+    async run() {
+      return run(sql, args);
+    },
+    async all<T>() {
+      return { results: db.prepare(sql).all(...args) as T[] };
+    },
+    async first<T>() {
+      const row = db.prepare(sql).get(...args) as T | undefined;
+      return row ?? null;
+    },
+  });
+
   const prepare = (sql: string) => ({
-    bind(...args: unknown[]): Bound {
-      return {
-        sql,
-        args,
-        async run() {
-          return run(sql, args);
-        },
-        async all<T>() {
-          return { results: db.prepare(sql).all(...args) as T[] };
-        },
-        async first<T>() {
-          const row = db.prepare(sql).get(...args) as T | undefined;
-          return row ?? null;
-        },
-      };
+    ...statement(sql, []),
+    bind(...args: unknown[]) {
+      return statement(sql, args);
     },
   });
 

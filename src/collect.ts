@@ -1,8 +1,9 @@
-import { byRank, dedupeDrafts } from "./item";
+import { byRank, dedupeDrafts, isPredominantlyChinese } from "./item";
 import { SOURCES } from "./sources";
 import type { CollectReport, Draft, Env, Source, SourceLoad } from "./types";
 
-export const DAILY_LIMIT = 16;
+/** Cap for one collect invocation. Each cron and each manual run gets its own cap. */
+export const RUN_LIMIT = 16;
 
 export async function loadSource(source: Source): Promise<SourceLoad> {
   try {
@@ -57,7 +58,7 @@ export function selectHybrid(items: Draft[], limit: number): Draft[] {
 export function selectFresh(
   items: Draft[],
   existing: Set<string>,
-  limit = DAILY_LIMIT,
+  limit = RUN_LIMIT,
 ): { picked: Draft[]; duplicates: number; capped: number } {
   const unique = dedupeDrafts(items);
   const fresh = unique.filter((item) => !existing.has(item.canonicalUrl));
@@ -91,7 +92,7 @@ export async function runCollect(env: Env, trigger: "cron" | "manual"): Promise<
     env.DB,
     [...new Set(pool.map((item) => item.canonicalUrl))],
   );
-  const { picked, duplicates, capped } = selectFresh(pool, existing, DAILY_LIMIT);
+  const { picked, duplicates, capped } = selectFresh(pool, existing, RUN_LIMIT);
   const collectedAt = new Date().toISOString();
   let inserted = 0;
   if (picked.length) {
@@ -171,4 +172,18 @@ export async function runCollect(env: Env, trigger: "cron" | "manual"): Promise<
     }),
   );
   return report;
+}
+
+export async function purgeNonChinese(db: D1Database): Promise<{ scanned: number; deleted: number }> {
+  const rows = await db.prepare("SELECT id, title FROM items").all<{ id: number; title: string }>();
+  const all = rows.results ?? [];
+  const ids = all.filter((row) => !isPredominantlyChinese(row.title)).map((row) => row.id);
+  let deleted = 0;
+  for (let index = 0; index < ids.length; index += 80) {
+    const chunk = ids.slice(index, index + 80);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const result = await db.prepare(`DELETE FROM items WHERE id IN (${placeholders})`).bind(...chunk).run();
+    deleted += result.meta?.changes ?? 0;
+  }
+  return { scanned: all.length, deleted };
 }

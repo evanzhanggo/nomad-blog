@@ -92,7 +92,6 @@ nav.site { display: flex; gap: 0.9rem; font-size: 0.95rem; }
 nav.site a { color: var(--ink); text-decoration: none; border-bottom: 1px solid transparent; }
 nav.site a:hover, nav.site a[aria-current="page"] { border-bottom-color: var(--stamp); color: var(--stamp); }
 .deck { margin: 0.75rem 0 0; max-width: 46rem; color: var(--muted); }
-.rule { height: 3px; background: linear-gradient(90deg, var(--teal), var(--stamp)); }
 main { flex: 1; padding: 1.4rem 0 3rem; }
 .filters { display: grid; gap: 0.85rem; margin-bottom: 1.3rem; }
 .tag-row, .meta-row { display: flex; gap: 0.45rem; overflow-x: auto; padding-bottom: 0.15rem; }

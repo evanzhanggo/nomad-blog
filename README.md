@@ -2,29 +2,31 @@
 
 给中文读者的数字游民日更。站点地址是 [nomad.evanzhang.cloud](https://nomad.evanzhang.cloud)。
 
-同一个 Cloudflare Worker 负责两件事：每天去公开来源挑一轮热门指南，以及把这些条目渲染成网页。没有第二台服务器，也没有前端框架。正文不入库，页面上只有标题、最多 300 字的摘要、来源、作者和原文链接。
+同一个 Cloudflare Worker 负责两件事：每天两次去公开来源挑中文指南，以及把这些条目渲染成网页。没有第二台服务器，也没有前端框架。正文不入库，页面上只有标题、最多 300 字的摘要、来源、作者和原文链接。
 
 ## 架构
 
 ```
-Cron 0 0 * * * UTC
+Cron 0 0 * * * 与 0 14 * * * UTC
         │
         ▼
 Worker（src/index.ts，ES Module）
   ├─ scheduled → 采集器
-  └─ fetch     → 首页 / 详情 / 关于 / RSS / POST /admin/collect
+  └─ fetch     → 首页 / 详情 / 关于 / RSS / POST /admin/collect / POST /admin/purge-non-chinese
         │
         ▼
 D1（绑定名 DB）
 ```
 
-- 定时表达式：`0 0 * * *`，即每天 00:00 UTC，北京时间 08:00。
+- 定时表达式：`0 0 * * *` 和 `0 14 * * *`，即 UTC 00:00 与 14:00，北京时间 08:00 与 22:00。两次都执行同一套采集。
 - D1 绑定名：`DB`。数据库名：`nomad-blog`。
 - 自定义域名：`nomad.evanzhang.cloud`（zone `evanzhang.cloud` 已在 Cloudflare）。
 - Worker 名称：`nomad-blog`。
 - 唯一密钥：`ADMIN_TOKEN`。用 `wrangler secret put ADMIN_TOKEN` 写入，不要放进仓库。`wrangler.toml` 里的 `database_id` 是占位符 `00000000-0000-0000-0000-000000000000`，部署前换成 `wrangler d1 create` 返回的 id。
 
-采集器对每个来源单独 `fetch`、单独超时（大约 12 秒）、单独捕获错误。一个来源失败只会记在当轮报告里。条目按规范 URL 去重，再按热度（点数、反应、回复）和新鲜程度挑选，每轮最多写入 16 条新内容。同一个 URL 再遇到时不会覆盖，也不会把全文存下来。
+采集器对每个来源单独 `fetch`、单独超时（大约 12 秒）、单独捕获错误。一个来源失败只会记在当轮报告里。只留下标题以中文为主的条目（至少 4 个汉字，并且汉字不少于汉字与英文字母合计的 45%）。同一篇原文只保留一次。每次运行按新鲜程度最多写入 16 条新内容，所以一天两次最多大约 32 条；第二次不会把第一次已经写入的链接再写一遍。首页按北京时间的收录日分组，同一天的两次结果在同一组里。
+
+`compatibility_date` 是 `2026-01-15`。没有 `compatibility_flags`，也不需要 `nodejs_compat`。除了密钥 `ADMIN_TOKEN`，Worker 只读 D1 绑定 `DB`。
 
 ## 本地运行
 
@@ -69,7 +71,7 @@ npx wrangler secret put ADMIN_TOKEN
 npx wrangler deploy
 ```
 
-`wrangler deploy` 会按 `wrangler.toml` 绑定 D1、挂上每天一次的 Cron，并把 Worker 接到 `nomad.evanzhang.cloud`。
+`wrangler deploy` 会按 `wrangler.toml` 绑定 D1、挂上每天两次的 Cron，并把 Worker 接到 `nomad.evanzhang.cloud`。
 
 上线后可以手动补一轮：
 
@@ -78,7 +80,14 @@ curl -X POST https://nomad.evanzhang.cloud/admin/collect \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
-没带正确的 `Authorization: Bearer <ADMIN_TOKEN>` 会返回 401。没配置 `ADMIN_TOKEN` 时，这个接口一律拒绝。
+清掉已经入库、但标题不是中文为主的旧条目：
+
+```bash
+curl -X POST https://nomad.evanzhang.cloud/admin/purge-non-chinese \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+返回 `{"ok":true,"scanned":123,"deleted":40}`。判断标准和采集时一样。没带正确的 `Authorization: Bearer <ADMIN_TOKEN>` 会返回 401。没配置 `ADMIN_TOKEN` 时，这两个接口一律拒绝。
 
 ## 页面
 
@@ -92,29 +101,23 @@ curl -X POST https://nomad.evanzhang.cloud/admin/collect \
 
 ## 来源
 
-| id | 名称 | 地址 | 热度 |
-| --- | --- | --- | --- |
-| `hn` | Hacker News | Algolia `digital nomad` / `nomad visa` / `remote work` | 点数，评论作少量加权 |
-| `devto` | dev.to | `tag=digitalnomad`，以及 `tag=remotework&top=7` | 反应数 |
-| `medium` | Medium | `digital-nomad` 标签 RSS；`remote-work` 只留下和游民、签证、旅行相关的 | 无，靠时间 |
-| `nomadgate` | Nomad Gate | `https://nomadgate.com/feed.xml` | 无 |
-| `johnnyfd` | JohnnyFD | `https://www.johnnyfd.com/feeds/posts/default?alt=rss` | 无 |
-| `v2ex-remote` | V2EX · 远程工作 | `node_name=remote` | 回复数 |
-| `v2ex-visa` | V2EX · 签证 | `node_name=visa` | 回复数 |
-| `eleduck` | 电鸭社区 | `https://eleduck.com/feed/latest.xml` | 无 |
-| `remoteok` | Remote OK | `https://remoteok.com/api`，只留全球远程的设计、工程、产品等工作 | 无 |
+只要中文。这些站提供自己的 RSS，不依赖会被 Cloudflare 拦住的接口。
+
+| id | 名称 | 地址 |
+| --- | --- | --- |
+| `eleduck` | 电鸭社区 | `https://eleduck.com/feed/latest.xml` |
+| `looktheworld` | Look the World | `https://www.looktheworld.com/changes.xml` |
+| `jarodise` | 数字游民部落 | `https://jarodise.com/rss.xml`（标题或摘要要碰到游民、远程、签证、旅居、海外这些词） |
+| `turtlegirl` | 乌龟妹出走旅行 | `https://turtlegirltravel.com/category/digital-nomad/feed/` |
+| `rososa` | 爱沙尼亚电子居民社区 | `https://rososa.com/feed/` |
 
 请求都带 `User-Agent: NomadBlogBot/1.0 (+https://nomad.evanzhang.cloud; excerpts-only; attribution)`。
 
-查过但没有接进来的：
+没有接进来的：
 
-- Reddit 的 JSON 和 RSS 在这里返回 403 或登录页。
-- Nomad List 的 `/feed`、`/rss`、`/blog/feed` 返回的是网站 HTML，不是订阅源。
-- Remote OK 博客 RSS 返回 410。职位 API 还在，所以只收了全球远程这一类。
-- 电鸭的 `svc.eleduck.com` API 返回 403。官网 RSS 可用。
-- V2EX「数字游民」节点几乎没有帖子。「dn」节点是域名，不是游民。
-
-Hacker News 上外链文章的提交者不会被写成原作者，作者一栏是「未知」，讨论线程另给链接。Ask / Show HN 没有外链时，作者才是发帖的人。
+- Hacker News、dev.to、Medium、Nomad Gate、JohnnyFD、Remote OK：英文来源。
+- V2EX 官方 JSON 和 Atom：在 Cloudflare 的出口 IP 上返回 403。
+- `rsshub.app`：对这个采集器直接拒绝。能用的镜像也没有「远程工作」节点这条路由，全站最新里几乎碰不到游民或签证，所以不用它当生产来源。
 
 ## 怎么加一个来源
 
