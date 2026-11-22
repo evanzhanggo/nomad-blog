@@ -79,6 +79,7 @@ header.mast {
   gap: 1rem;
   margin-top: 0.2rem;
 }
+.brand { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; }
 .logo {
   font-family: var(--serif);
   font-size: clamp(2.2rem, 5vw, 3.3rem);
@@ -87,6 +88,7 @@ header.mast {
   color: var(--ink);
   text-decoration: none;
 }
+.byline { margin: 0; color: var(--muted); font-size: 0.82rem; letter-spacing: 0.06em; }
 .logo:hover { color: var(--teal); }
 nav.site { display: flex; gap: 0.9rem; font-size: 0.95rem; }
 nav.site a { color: var(--ink); text-decoration: none; border-bottom: 1px solid transparent; }

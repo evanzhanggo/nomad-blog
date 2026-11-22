@@ -104,6 +104,7 @@ function layout(options: {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(fullTitle)}</title>
 <meta name="description" content="${esc(options.description)}">
+<meta name="author" content="Evan Zhang">
 <link rel="canonical" href="${esc(canonical)}">
 <link rel="alternate" type="application/rss+xml" title="游牧手记" href="/rss.xml">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -121,6 +122,8 @@ function layout(options: {
 <meta property="og:locale" content="zh_CN">
 <meta property="og:type" content="${shareType}">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@evanzhang_go">
+<meta name="twitter:creator" content="@evanzhang_go">
 <meta name="twitter:title" content="${esc(shareTitle)}">
 <meta name="twitter:description" content="${esc(shareDescription)}">
 <meta name="twitter:image" content="${esc(image)}">
@@ -132,7 +135,10 @@ function layout(options: {
   <div class="wrap mast-inner">
     <p class="kicker">nomad.evanzhang.cloud · 每日选读</p>
     <div class="mast-row">
-      <a class="logo" href="/">游牧手记</a>
+      <div class="brand">
+        <a class="logo" href="/">游牧手记</a>
+        <p class="byline">by Evan Zhang</p>
+      </div>
       <nav class="site" aria-label="站点">
         <a href="/" ${onHome ? 'aria-current="page"' : ""}>最新</a>
         <a href="/about" ${options.path === "/about" ? 'aria-current="page"' : ""}>关于</a>
@@ -147,6 +153,7 @@ function layout(options: {
 <footer class="site">
   <div class="wrap">
     <p>正文转载自公开来源，文首和文末保留标题、作者、来源和原文链接。内容著作权归原作者所有，如有侵权请联系删除。</p>
+    <p>© 2026 Evan Zhang · <a href="https://x.com/evanzhang_go" rel="noopener noreferrer" target="_blank">X @evanzhang_go</a></p>
     <p>游牧手记 · <a href="/rss.xml">订阅 RSS</a> · <a href="/about">关于这份日更</a></p>
   </div>
 </footer>

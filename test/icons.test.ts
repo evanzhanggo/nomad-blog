@@ -62,6 +62,11 @@ describe("share tags", () => {
     expect(html).toContain('property="og:image" content="https://nomad.evanzhang.cloud/og.png"');
     expect(html).toContain('property="og:url" content="https://nomad.evanzhang.cloud/about"');
     expect(html).toContain('property="og:type" content="website"');
+    expect(html).toContain('name="author" content="Evan Zhang"');
+    expect(html).toContain('name="twitter:site" content="@evanzhang_go"');
+    expect(html).toContain('name="twitter:creator" content="@evanzhang_go"');
+    expect(html).toContain('class="byline">by Evan Zhang');
+    expect(html).toContain('href="https://x.com/evanzhang_go" rel="noopener noreferrer" target="_blank">X @evanzhang_go');
     expect(html).toContain('name="twitter:card" content="summary_large_image"');
     expect(html).toContain('name="twitter:image" content="https://nomad.evanzhang.cloud/og.png"');
   });
