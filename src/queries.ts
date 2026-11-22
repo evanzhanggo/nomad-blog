@@ -18,8 +18,12 @@ export function normalizePage(requested: number, total: number, pageSize = PAGE_
   return Math.min(Math.max(1, requested), pageCount(total, pageSize));
 }
 
+const ITEM_COLUMNS = `id, canonical_url, title, excerpt, source_id, source_name, author,
+  published_at, collected_at, popularity, popularity_label, tags, language, discussion_url,
+  topic, quality_score, section`;
+
 function whereClause(sourceId: string, tag: string): { sql: string; binds: string[] } {
-  const parts: string[] = [];
+  const parts = ["section = 'daily'"];
   const binds: string[] = [];
   if (sourceId) {
     parts.push("source_id = ?");
@@ -54,8 +58,7 @@ export async function listItems(
   const offset = (page - 1) * PAGE_SIZE;
   const rows = await db
     .prepare(
-      `SELECT id, canonical_url, title, excerpt, source_id, source_name, author,
-              published_at, collected_at, popularity, popularity_label, tags, language, discussion_url
+      `SELECT ${ITEM_COLUMNS}
        FROM items ${where.sql}
        ORDER BY collected_at DESC, popularity DESC, id DESC
        LIMIT ? OFFSET ?`,
@@ -68,8 +71,7 @@ export async function listItems(
 export async function getItem(db: D1Database, id: number): Promise<ItemRow | null> {
   return db
     .prepare(
-      `SELECT id, canonical_url, title, excerpt, source_id, source_name, author,
-              published_at, collected_at, popularity, popularity_label, tags, language, discussion_url
+      `SELECT ${ITEM_COLUMNS}
        FROM items WHERE id = ?`,
     )
     .bind(id)
@@ -79,13 +81,27 @@ export async function getItem(db: D1Database, id: number): Promise<ItemRow | nul
 export async function recentItems(db: D1Database, limit = 30): Promise<ItemRow[]> {
   const rows = await db
     .prepare(
-      `SELECT id, canonical_url, title, excerpt, source_id, source_name, author,
-              published_at, collected_at, popularity, popularity_label, tags, language, discussion_url
+      `SELECT ${ITEM_COLUMNS}
        FROM items
+       WHERE section = 'daily'
        ORDER BY collected_at DESC, popularity DESC, id DESC
        LIMIT ?`,
     )
     .bind(limit)
+    .all<ItemRow>();
+  return rows.results ?? [];
+}
+
+export async function listClassics(db: D1Database, topic: string): Promise<ItemRow[]> {
+  const rows = await db
+    .prepare(
+      `SELECT ${ITEM_COLUMNS}
+       FROM items
+       WHERE section = 'classic' AND (? = '' OR topic = ?)
+       ORDER BY quality_score DESC, id DESC
+       LIMIT 24`,
+    )
+    .bind(topic, topic)
     .all<ItemRow>();
   return rows.results ?? [];
 }

@@ -45,7 +45,7 @@ describe("text", () => {
   });
 
   it("keeps Chinese titles, including mixed visa headlines, and drops English ones", () => {
-    expect(isPredominantlyChinese("越南签证办理")).toBe(true);
+    expect(isPredominantlyChinese("越南数字游民签证办理指南")).toBe(true);
     expect(isPredominantlyChinese("AI时代程序员能干啥，有点焦虑")).toBe(true);
     expect(
       isPredominantlyChinese(
@@ -69,8 +69,8 @@ describe("text", () => {
   it("builds a draft without storing a script or a long body", () => {
     const draft = buildDraft({
       url: "https://www.looktheworld.com/docs/pt/?utm_campaign=spring",
-      title: "葡萄牙签证 <script>x</script>",
-      excerpt: `<p>${"字".repeat(400)}</p>`,
+      title: "葡萄牙签证申请教程 <script>x</script>",
+      excerpt: `<p>${"材料与顺序".repeat(40)}</p>`,
       sourceId: "looktheworld",
       sourceName: "Look the World",
       author: "noreply@example.com (Ada)",

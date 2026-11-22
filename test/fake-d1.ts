@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 interface Bound {
@@ -15,7 +15,10 @@ interface Bound {
  */
 export function createTestDb(): D1Database {
   const db = new DatabaseSync(":memory:");
-  db.exec(readFileSync(new URL("../migrations/0001_init.sql", import.meta.url), "utf8"));
+  const migrations = new URL("../migrations/", import.meta.url);
+  for (const name of readdirSync(migrations).filter((file) => file.endsWith(".sql")).sort()) {
+    db.exec(readFileSync(new URL(name, migrations), "utf8"));
+  }
 
   const run = (sql: string, args: unknown[]) => {
     const info = db.prepare(sql).run(...args);

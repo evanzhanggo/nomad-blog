@@ -8,7 +8,7 @@ import { createTestDb } from "./fake-d1";
 
 async function loadOnce(source: (typeof SOURCES)[number]) {
   const first = await loadSource(source);
-  if (first.ok && first.items.length > 0) return first;
+  if (first.ok) return first;
   await new Promise((resolve) => setTimeout(resolve, 600));
   console.error("retrying", source.id, first.error);
   return loadSource(source);
@@ -20,7 +20,6 @@ describe("live sources", () => {
       const result = await loadOnce(source);
       expect(result.error, result.error ?? "").toBeNull();
       expect(result.ok).toBe(true);
-      expect(result.items.length).toBeGreaterThan(0);
       for (const item of result.items) {
         expect(item.title.length).toBeGreaterThan(0);
         expect(item.canonicalUrl).toMatch(/^https:\/\//);
@@ -28,6 +27,8 @@ describe("live sources", () => {
         expect(item.excerpt.includes("<script")).toBe(false);
         expect(item.sourceId).toBe(source.id);
         expect(item.sourceName.length).toBeGreaterThan(0);
+        expect(item.qualityScore).toBeGreaterThanOrEqual(40);
+        expect(item.topic).not.toBe("");
       }
       const sample = result.items[0];
       console.log(

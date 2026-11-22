@@ -31,6 +31,8 @@ export interface Draft {
   rankScore: number;
   tags: string;
   language: "zh" | "en";
+  topic: string;
+  qualityScore: number;
 }
 
 export interface ItemRow {
@@ -48,6 +50,9 @@ export interface ItemRow {
   tags: string;
   language: string;
   discussion_url: string | null;
+  topic: string;
+  quality_score: number;
+  section: string;
 }
 
 export interface Source {

@@ -1,104 +1,81 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// src/tags.ts
-var TAGS = [
+// data/classics.json
+var classics_default = [
   {
-    id: "visa",
-    label: "\u7B7E\u8BC1",
-    pattern: /visa|passport|residency|golden visa|nomad visa|dnv|移民|签证|簽證|居留|永居|国籍|电子居民|電子居民|数字游民签|數位遊牧簽/i
+    url: "https://invest-nav.com/tutorials/hk-banks/text/mainland-hongkong-bank-sim-brokers-gmail/",
+    title: "\u5927\u9646\u7528\u6237\u9999\u6E2F\u5FC5\u505A\u7684 4 \u4EF6\u4E8B 2026\uFF1A\u6E2F\u5361\u3001\u9999\u6E2F\u624B\u673A\u53F7\u3001\u7F8E\u80A1\u5238\u5546\u3001Gmail",
+    sourceId: "invest-nav",
+    sourceName: "\u6295\u8D44\u5BFC\u822A",
+    author: "Nico",
+    topic: "bank"
   },
   {
-    id: "taxes",
-    label: "\u7A0E\u52A1",
-    pattern: /\btax(?:es|ation)?\b|irs\b|vat\b|税务|报税|税收|个税|税务居民/i
+    url: "https://larksim.com/guide",
+    title: "giffgaff \u4E2D\u6587\u6559\u7A0B\u4E0E\u6D77\u5916\u7535\u8BDD\u5361\u6307\u5357\uFF1A\u6FC0\u6D3B\u3001\u5145\u503C\u3001\u6F2B\u6E38\u3001\u4FDD\u53F7",
+    sourceId: "larksim",
+    sourceName: "LarkSim",
+    author: null,
+    topic: "sim"
   },
   {
-    id: "jobs",
-    label: "\u8FDC\u7A0B\u5DE5\u4F5C",
-    pattern: /hiring|we're hiring|\bjobs?\b|\bremote\b|career|salary|recruit|远程|招聘|内推|岗位|职位/i
+    url: "https://kannetflix.com/esim/",
+    title: "eSIM \u4E0E\u6D77\u5916\u624B\u673A\u53F7\u6307\u5357 2026\uFF1A\u7F8E\u533A\u7D2B\u5361/\u82F1\u56FD giffgaff \u7533\u8BF7\u4E0E\u4FDD\u53F7",
+    sourceId: "kannetflix",
+    sourceName: "\u770B\u5948\u98DE",
+    author: "Leo",
+    topic: "sim"
   },
   {
-    id: "cost",
-    label: "\u751F\u6D3B\u6210\u672C",
-    pattern: /cost of living|budget|expenses|生活成本|物价|开销|每月花费|花费报告/i
+    url: "https://kannetflix.com/esim/giffgaff/",
+    title: "giffgaff \u82F1\u56FD\u624B\u673A\u5361/eSIM \u5B9E\u6D4B 2026\uFF1A\u514D\u5B9E\u540D 0 \u6708\u79DF",
+    sourceId: "kannetflix",
+    sourceName: "\u770B\u5948\u98DE",
+    author: null,
+    topic: "sim"
   },
   {
-    id: "cities",
-    label: "\u57CE\u5E02",
-    pattern: /chiang mai|bali|lisbon|porto|bangkok|mexico city|medell[ií]n|tbilisi|buenos aires|da nang|penang|kuala lumpur|tokyo|taipei|seoul|清迈|曼谷|巴厘|里斯本|波尔图|墨西哥城|第比利斯|岘港|槟城|吉隆坡|东京|台北|城市指南|where to (?:live|stay)|best (?:cities|places) for/i
+    url: "https://kannetflix.com/esim/ultra-mobile/",
+    title: "\u7F8E\u56FD\u624B\u673A\u53F7\u63A8\u8350 2026\uFF1AUltra Mobile PayGo \u7D2B\u5361",
+    sourceId: "kannetflix",
+    sourceName: "\u770B\u5948\u98DE",
+    author: null,
+    topic: "sim"
   },
   {
-    id: "housing",
-    label: "\u4F4F\u5BBF",
-    pattern: /apartment|\brent(?:ing|al)?\b|airbnb|accommodation|coliving|住房|租房|住宿|民宿|长租/i
+    url: "https://kannetflix.com/pay/itin/",
+    title: "ITIN \u7F8E\u56FD\u7A0E\u53F7\u7533\u8BF7\u6559\u7A0B\uFF1A4 \u79CD\u65B9\u5F0F\u6A2A\u8BC4",
+    sourceId: "kannetflix",
+    sourceName: "\u770B\u5948\u98DE",
+    author: null,
+    topic: "tax"
   },
   {
-    id: "coworking",
-    label: "\u8054\u5408\u529E\u516C",
-    pattern: /cowork|co-working|联合办公|共享办公|coworking/i
+    url: "https://kannetflix.com/pay/apple-id-us/",
+    title: "\u7F8E\u533A Apple ID \u6CE8\u518C\u3001\u5145\u503C\u4E0E\u9632\u5C01\u6307\u5357",
+    sourceId: "kannetflix",
+    sourceName: "\u770B\u5948\u98DE",
+    author: null,
+    topic: "ai"
   },
   {
-    id: "insurance",
-    label: "\u4FDD\u9669",
-    pattern: /insurance|safetywing|health cover|保险|医疗险/i
+    url: "https://kannetflix.com/pay/chatgpt-payment/",
+    title: "ChatGPT Plus \u56FD\u5185\u4ED8\u6B3E\u6307\u5357 2026",
+    sourceId: "kannetflix",
+    sourceName: "\u770B\u5948\u98DE",
+    author: null,
+    topic: "ai"
   },
   {
-    id: "finance",
-    label: "\u8D22\u52A1",
-    pattern: /\bbank(?:ing)?\b|wise\b|revolut|paypal|stripe|多币种|银行|收款|跨境支付|发票|currency/i
-  },
-  {
-    id: "tools",
-    label: "\u5DE5\u5177",
-    pattern: /\bvpn\b|notion|obsidian|slack|vscode|figma|工具|软件|效率/i
-  },
-  {
-    id: "legal",
-    label: "\u6CD5\u5F8B\u4E0E\u5408\u89C4",
-    pattern: /\blegal\b|compliance|\bllc\b|incorporation|合规|公司注册|法律|合同/i
-  },
-  {
-    id: "gear",
-    label: "\u88C5\u5907",
-    pattern: /\bgear\b|packing list|backpack|装备|行李|行李清单/i
-  },
-  {
-    id: "travel",
-    label: "\u65C5\u884C",
-    pattern: /\btravel\b|\bflight\b|backpacker|行程|旅行|航班|机票|游记|旅居/i
-  },
-  {
-    id: "community",
-    label: "\u793E\u533A",
-    pattern: /community|meetup|discord|社区|聚会|交流群/i
-  },
-  {
-    id: "howto",
-    label: "\u6559\u7A0B",
-    pattern: /how to|guide|tutorial|教程|指南|入门|手把手|攻略/i
+    url: "https://kannetflix.com/pay/wise/",
+    title: "Wise \u4E2D\u56FD\u5927\u9646\u7528\u6237\u6CE8\u518C\u4E0E\u4F7F\u7528\u6559\u7A0B",
+    sourceId: "kannetflix",
+    sourceName: "\u770B\u5948\u98DE",
+    author: null,
+    topic: "bank"
   }
 ];
-var TAG_BY_ID = new Map(TAGS.map((tag) => [tag.id, tag]));
-function tagString(title, excerpt) {
-  const haystack = `${title}
-${excerpt}`;
-  const ids = TAGS.filter((tag) => tag.pattern.test(haystack)).map((tag) => tag.id);
-  const picked = ids.slice(0, 4);
-  return picked.length ? `|${picked.join("|")}|` : "";
-}
-__name(tagString, "tagString");
-function parseTags(stored) {
-  return stored.split("|").map((id) => id.trim()).filter(Boolean).map((id) => {
-    const known = TAG_BY_ID.get(id);
-    return known ? { id, label: known.label } : null;
-  }).filter((tag) => tag !== null);
-}
-__name(parseTags, "parseTags");
-function knownTag(id) {
-  return TAG_BY_ID.get(id);
-}
-__name(knownTag, "knownTag");
 
 // src/text.ts
 var USER_AGENT = "NomadBlogBot/1.0 (+https://nomad.evanzhang.cloud; excerpts-only; attribution)";
@@ -218,19 +195,6 @@ function authorName(raw) {
   return clip(name, 80);
 }
 __name(authorName, "authorName");
-function rankScore(popularity2, publishedAt, commentBonus = 0) {
-  let score = Math.max(0, popularity2) + Math.max(0, commentBonus);
-  if (publishedAt) {
-    const ageDays = (Date.now() - Date.parse(publishedAt)) / 864e5;
-    if (Number.isFinite(ageDays)) {
-      if (ageDays < 2) score += 6;
-      else if (ageDays < 10) score += 3;
-      else if (ageDays > 400) score -= 4;
-    }
-  }
-  return Math.round(score * 10) / 10;
-}
-__name(rankScore, "rankScore");
 function esc(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
@@ -288,68 +252,6 @@ async function fetchText(url, timeoutMs = 12e3) {
   return new TextDecoder("utf-8").decode(buffer);
 }
 __name(fetchText, "fetchText");
-
-// src/item.ts
-var BLOCKED = /remote code execution|\brce\b|\bcve-\d|vulnerability|exploit|buffer overflow|privilege escalation/i;
-function detectLanguage(title, excerpt) {
-  return isPredominantlyChinese(title) || isPredominantlyChinese(excerpt) ? "zh" : "en";
-}
-__name(detectLanguage, "detectLanguage");
-function isPredominantlyChinese(title) {
-  const cjk = title.match(/[\u4e00-\u9fff]/g)?.length ?? 0;
-  const latin = title.match(/[A-Za-z]/g)?.length ?? 0;
-  if (cjk < 4) return false;
-  return cjk / (cjk + latin) >= 0.45;
-}
-__name(isPredominantlyChinese, "isPredominantlyChinese");
-function buildDraft(input) {
-  const title = clip(plainTitle(input.title), 200);
-  const canonical = canonicalUrl(input.url);
-  if (!title || !canonical) return null;
-  if (!isPredominantlyChinese(title)) return null;
-  if (BLOCKED.test(title)) return null;
-  const excerpt = excerptOf(input.excerpt ?? "", title);
-  const publishedAt = toIso(input.publishedAt);
-  const popularity2 = Math.max(0, Math.round(input.popularity ?? 0));
-  const discussion = input.discussionUrl ? canonicalUrl(input.discussionUrl) : null;
-  return {
-    canonicalUrl: canonical,
-    title,
-    excerpt,
-    sourceId: input.sourceId,
-    sourceName: input.sourceName,
-    author: authorName(input.author),
-    publishedAt,
-    popularity: popularity2,
-    popularityLabel: input.popularityLabel ?? "",
-    discussionUrl: discussion && discussion !== canonical ? discussion : null,
-    rankScore: rankScore(popularity2, publishedAt, input.commentBonus ?? 0),
-    tags: tagString(title, excerpt),
-    language: detectLanguage(title, excerpt)
-  };
-}
-__name(buildDraft, "buildDraft");
-function withTag(draft, tag) {
-  if (!draft) return null;
-  const ids = draft.tags.split("|").filter(Boolean);
-  if (ids.includes(tag)) return draft;
-  ids.unshift(tag);
-  return { ...draft, tags: `|${ids.slice(0, 4).join("|")}|` };
-}
-__name(withTag, "withTag");
-function byRank(a, b) {
-  return b.rankScore - a.rankScore || b.popularity - a.popularity || (b.publishedAt ?? "").localeCompare(a.publishedAt ?? "");
-}
-__name(byRank, "byRank");
-function dedupeDrafts(items) {
-  const byUrl = /* @__PURE__ */ new Map();
-  for (const item of items) {
-    const current = byUrl.get(item.canonicalUrl);
-    if (!current || item.rankScore > current.rankScore) byUrl.set(item.canonicalUrl, item);
-  }
-  return [...byUrl.values()];
-}
-__name(dedupeDrafts, "dedupeDrafts");
 
 // src/feed.ts
 function inner(block, names) {
@@ -417,106 +319,452 @@ function parseFeed(xml) {
 }
 __name(parseFeed, "parseFeed");
 
-// src/sources.ts
-var NOMAD_TOPIC = /数字游民|數位遊牧|数位游牧|游民|遊牧|远程|遠端|遠程|签证|簽證|旅居|海外|自由职业|自由職業|一人公司|居留|移民|电子居民|電子居民|税务|稅務|nomad/i;
-function top(items, limit) {
-  const ready = dedupeDrafts(items.filter((item) => item !== null)).sort(byRank);
-  if (!ready.length) throw new Error("no items");
-  return ready.slice(0, limit);
+// src/score.ts
+var MIN_QUALITY_SCORE = 40;
+var TOPICS = [
+  {
+    id: "bank",
+    label: "\u6D77\u5916\u5F00\u5361",
+    patterns: [
+      { re: /港卡|香港银行|香港银行卡|汇丰|中银香港|众安银行|蚂蚁银行|天星银行|虚拟银行|银行卡开户/i, weight: 28, primary: true },
+      { re: /开户|U\s*卡|虚拟卡|\bWise\b|万里汇|收款账户/i, weight: 14 }
+    ]
+  },
+  {
+    id: "sim",
+    label: "\u6D77\u5916\u624B\u673A\u5361",
+    patterns: [
+      { re: /紫卡|giffgaff|保号|eSIM|香港手机号|电话卡|手机卡|Club\s*SIM|英国号|香港号/i, weight: 28, primary: true },
+      { re: /验证码|漫游|实名/i, weight: 8 }
+    ]
+  },
+  {
+    id: "tax",
+    label: "\u6D77\u5916\u7A0E\u53F7",
+    patterns: [
+      { re: /\bITIN\b|税号|税务居民|\bTIN\b|报税|W-7/i, weight: 28, primary: true },
+      { re: /税务|增值税|电子居民/i, weight: 12 }
+    ]
+  },
+  {
+    id: "ai",
+    label: "\u6D77\u5916 AI \u8BA2\u9605",
+    patterns: [
+      { re: /ChatGPT|Claude|OpenAI|Apple\s*ID|美区|外区|Gemini/i, weight: 26, primary: true },
+      { re: /订阅|Plus|礼品卡|虚拟卡/i, weight: 10 }
+    ]
+  },
+  {
+    id: "visa",
+    label: "\u6570\u5B57\u6E38\u6C11\u7B7E\u8BC1",
+    patterns: [
+      { re: /数字游民签证|數位遊牧簽證|游民签证|DNV|居留许可/i, weight: 30, primary: true },
+      { re: /签证|簽證|居留|永居|移民|电子居民/i, weight: 16 }
+    ]
+  },
+  {
+    id: "remote",
+    label: "\u8FDC\u7A0B\u5DE5\u4F5C",
+    patterns: [
+      { re: /远程工作|遠端工作|远程办公|数字游民|數位遊牧/i, weight: 24, primary: true },
+      { re: /自由职业|一人公司|异步办公/i, weight: 12 }
+    ]
+  },
+  {
+    id: "broker",
+    label: "\u6D77\u5916\u5238\u5546",
+    patterns: [
+      { re: /券商|盈透|\bIBKR\b|富途|老虎证券|美股开户|港股通|出入金/i, weight: 28, primary: true },
+      { re: /美股|港股|经纪账户/i, weight: 12 }
+    ]
+  }
+];
+var TOPIC_BY_ID = new Map(TOPICS.map((topic) => [topic.id, topic]));
+function topicById(id) {
+  return TOPIC_BY_ID.get(id);
 }
-__name(top, "top");
-async function fetchFeed(options) {
-  const entries = parseFeed(await fetchText(options.url));
-  return top(
+__name(topicById, "topicById");
+var GUIDE = /指南|教程|攻略|手把手|实测|流程|步骤|如何|开户|保号|申请/;
+var CHATTER = /呢[？?]?$|大家怎么|请问|求助|吐槽|闲聊|空虚|摸鱼|各位都在/;
+var REJECT = /招聘|内推|招一位|招人|岗位更新|接单|外包|美工|诚邀|派单|月薪|底薪|急招|在招|兼职/;
+function scoreQuality(title, excerpt, popularity2 = 0) {
+  const haystack = `${title}
+${excerpt}`;
+  if (REJECT.test(haystack)) {
+    return { topic: "", score: 0, rejected: true, reason: "\u62DB\u8058\u3001\u6D3E\u5355\u6216\u5E7F\u544A" };
+  }
+  let bestId = "";
+  let best = 0;
+  let primaryInTitle = false;
+  for (const topic of TOPICS) {
+    let points = 0;
+    let primary = false;
+    for (const pattern of topic.patterns) {
+      if (!pattern.re.test(haystack)) continue;
+      points += pattern.weight;
+      if (pattern.primary && pattern.re.test(title)) primary = true;
+    }
+    if (points > best) {
+      best = points;
+      bestId = topic.id;
+      primaryInTitle = primary;
+    }
+  }
+  if (!bestId || best < 12) {
+    return { topic: "", score: best, rejected: false, reason: "\u6CA1\u6709\u5BF9\u4E0A\u6838\u5FC3\u4E3B\u9898" };
+  }
+  const length = Array.from(excerpt).length;
+  const lengthScore = length >= 180 ? 18 : length >= 100 ? 12 : length >= 40 ? 6 : 0;
+  const guideScore = GUIDE.test(haystack) ? 16 : 0;
+  const titleScore = primaryInTitle ? 14 : 0;
+  const engagement = popularity2 >= 20 ? 10 : popularity2 >= 5 ? 6 : popularity2 >= 1 ? 3 : 0;
+  const chatterPenalty = CHATTER.test(title) && !/指南|教程|攻略|实测/.test(title) ? 24 : 0;
+  const score = best + lengthScore + guideScore + titleScore + engagement - chatterPenalty;
+  return {
+    topic: bestId,
+    score,
+    rejected: false,
+    reason: `\u4E3B\u9898${best}+\u7BC7\u5E45${lengthScore}+\u6307\u5357${guideScore}+\u6807\u9898${titleScore}+\u70ED\u5EA6${engagement}-\u95F2\u804A${chatterPenalty}`
+  };
+}
+__name(scoreQuality, "scoreQuality");
+function passesQuality(title, excerpt, popularity2 = 0) {
+  const quality = scoreQuality(title, excerpt, popularity2);
+  return !quality.rejected && quality.score >= MIN_QUALITY_SCORE && quality.topic !== "";
+}
+__name(passesQuality, "passesQuality");
+
+// src/tags.ts
+var TAGS = [
+  {
+    id: "visa",
+    label: "\u7B7E\u8BC1",
+    pattern: /visa|passport|residency|golden visa|nomad visa|dnv|移民|签证|簽證|居留|永居|国籍|电子居民|電子居民|数字游民签|數位遊牧簽/i
+  },
+  {
+    id: "taxes",
+    label: "\u7A0E\u52A1",
+    pattern: /\btax(?:es|ation)?\b|irs\b|vat\b|税务|报税|税收|个税|税务居民/i
+  },
+  {
+    id: "jobs",
+    label: "\u8FDC\u7A0B\u5DE5\u4F5C",
+    pattern: /hiring|we're hiring|\bjobs?\b|\bremote\b|career|salary|recruit|远程|招聘|内推|岗位|职位/i
+  },
+  {
+    id: "cost",
+    label: "\u751F\u6D3B\u6210\u672C",
+    pattern: /cost of living|budget|expenses|生活成本|物价|开销|每月花费|花费报告/i
+  },
+  {
+    id: "cities",
+    label: "\u57CE\u5E02",
+    pattern: /chiang mai|bali|lisbon|porto|bangkok|mexico city|medell[ií]n|tbilisi|buenos aires|da nang|penang|kuala lumpur|tokyo|taipei|seoul|清迈|曼谷|巴厘|里斯本|波尔图|墨西哥城|第比利斯|岘港|槟城|吉隆坡|东京|台北|城市指南|where to (?:live|stay)|best (?:cities|places) for/i
+  },
+  {
+    id: "housing",
+    label: "\u4F4F\u5BBF",
+    pattern: /apartment|\brent(?:ing|al)?\b|airbnb|accommodation|coliving|住房|租房|住宿|民宿|长租/i
+  },
+  {
+    id: "coworking",
+    label: "\u8054\u5408\u529E\u516C",
+    pattern: /cowork|co-working|联合办公|共享办公|coworking/i
+  },
+  {
+    id: "insurance",
+    label: "\u4FDD\u9669",
+    pattern: /insurance|safetywing|health cover|保险|医疗险/i
+  },
+  {
+    id: "finance",
+    label: "\u8D22\u52A1",
+    pattern: /\bbank(?:ing)?\b|wise\b|revolut|paypal|stripe|多币种|银行|收款|跨境支付|发票|currency/i
+  },
+  {
+    id: "tools",
+    label: "\u5DE5\u5177",
+    pattern: /\bvpn\b|notion|obsidian|slack|vscode|figma|工具|软件|效率/i
+  },
+  {
+    id: "legal",
+    label: "\u6CD5\u5F8B\u4E0E\u5408\u89C4",
+    pattern: /\blegal\b|compliance|\bllc\b|incorporation|合规|公司注册|法律|合同/i
+  },
+  {
+    id: "gear",
+    label: "\u88C5\u5907",
+    pattern: /\bgear\b|packing list|backpack|装备|行李|行李清单/i
+  },
+  {
+    id: "travel",
+    label: "\u65C5\u884C",
+    pattern: /\btravel\b|\bflight\b|backpacker|行程|旅行|航班|机票|游记|旅居/i
+  },
+  {
+    id: "community",
+    label: "\u793E\u533A",
+    pattern: /community|meetup|discord|社区|聚会|交流群/i
+  },
+  {
+    id: "howto",
+    label: "\u6559\u7A0B",
+    pattern: /how to|guide|tutorial|教程|指南|入门|手把手|攻略/i
+  }
+];
+var TAG_BY_ID = new Map(TAGS.map((tag) => [tag.id, tag]));
+function tagString(title, excerpt) {
+  const haystack = `${title}
+${excerpt}`;
+  const ids = TAGS.filter((tag) => tag.pattern.test(haystack)).map((tag) => tag.id);
+  const picked = ids.slice(0, 4);
+  return picked.length ? `|${picked.join("|")}|` : "";
+}
+__name(tagString, "tagString");
+function parseTags(stored) {
+  return stored.split("|").map((id) => id.trim()).filter(Boolean).map((id) => {
+    const known = TAG_BY_ID.get(id);
+    return known ? { id, label: known.label } : null;
+  }).filter((tag) => tag !== null);
+}
+__name(parseTags, "parseTags");
+function knownTag(id) {
+  return TAG_BY_ID.get(id);
+}
+__name(knownTag, "knownTag");
+
+// src/item.ts
+var BLOCKED = /remote code execution|\brce\b|\bcve-\d|vulnerability|exploit|buffer overflow|privilege escalation/i;
+function isPredominantlyChinese(title) {
+  const cjk = title.match(/[\u4e00-\u9fff]/g)?.length ?? 0;
+  const latin = title.match(/[A-Za-z]/g)?.length ?? 0;
+  if (cjk < 8) return false;
+  return cjk / (cjk + latin) >= 0.35;
+}
+__name(isPredominantlyChinese, "isPredominantlyChinese");
+function buildDraft(input) {
+  const title = clip(plainTitle(input.title), 200);
+  const canonical = canonicalUrl(input.url);
+  if (!title || !canonical) return null;
+  if (!isPredominantlyChinese(title)) return null;
+  if (BLOCKED.test(title)) return null;
+  const excerpt = excerptOf(input.excerpt ?? "", title);
+  const popularity2 = Math.max(0, Math.round(input.popularity ?? 0));
+  const quality = scoreQuality(title, excerpt, popularity2);
+  if (quality.rejected || quality.score < MIN_QUALITY_SCORE || !quality.topic) return null;
+  const publishedAt = toIso(input.publishedAt);
+  const discussion = input.discussionUrl ? canonicalUrl(input.discussionUrl) : null;
+  return {
+    canonicalUrl: canonical,
+    title,
+    excerpt,
+    sourceId: input.sourceId,
+    sourceName: input.sourceName,
+    author: authorName(input.author),
+    publishedAt,
+    popularity: popularity2,
+    popularityLabel: input.popularityLabel ?? "",
+    discussionUrl: discussion && discussion !== canonical ? discussion : null,
+    rankScore: quality.score,
+    tags: tagString(title, excerpt),
+    language: "zh",
+    topic: quality.topic,
+    qualityScore: quality.score
+  };
+}
+__name(buildDraft, "buildDraft");
+function withTag(draft, tag) {
+  if (!draft) return null;
+  const ids = draft.tags.split("|").filter(Boolean);
+  if (ids.includes(tag)) return draft;
+  ids.unshift(tag);
+  return { ...draft, tags: `|${ids.slice(0, 4).join("|")}|` };
+}
+__name(withTag, "withTag");
+function byRank(a, b) {
+  return b.rankScore - a.rankScore || b.popularity - a.popularity || (b.publishedAt ?? "").localeCompare(a.publishedAt ?? "");
+}
+__name(byRank, "byRank");
+function dedupeDrafts(items) {
+  const byUrl = /* @__PURE__ */ new Map();
+  for (const item of items) {
+    const current = byUrl.get(item.canonicalUrl);
+    if (!current || item.rankScore > current.rankScore) byUrl.set(item.canonicalUrl, item);
+  }
+  return [...byUrl.values()];
+}
+__name(dedupeDrafts, "dedupeDrafts");
+
+// src/sources.ts
+var FEEDS = [
+  { id: "kannetflix", name: "\u770B\u5948\u98DE", url: "https://kannetflix.com/index.xml", dailyLimit: 8 },
+  { id: "ttshuoka", name: "TT\u8BF4\u5361", url: "https://www.ttshuoka.com/blog/rss.xml", dailyLimit: 6 },
+  { id: "jarodise", name: "\u6570\u5B57\u6E38\u6C11\u90E8\u843D", url: "https://jarodise.com/rss.xml", dailyLimit: 6 },
+  {
+    id: "turtlegirl",
+    name: "\u4E4C\u9F9F\u59B9\u51FA\u8D70\u65C5\u884C",
+    url: "https://turtlegirltravel.com/category/digital-nomad/feed/",
+    dailyLimit: 4
+  },
+  { id: "looktheworld", name: "Look the World", url: "https://www.looktheworld.com/changes.xml", dailyLimit: 4, tag: "visa" },
+  { id: "rososa", name: "\u7231\u6C99\u5C3C\u4E9A\u7535\u5B50\u5C45\u6C11\u793E\u533A", url: "https://rososa.com/feed/", dailyLimit: 4 },
+  { id: "sspai", name: "\u5C11\u6570\u6D3E", url: "https://sspai.com/feed", dailyLimit: 3 },
+  { id: "eleduck", name: "\u7535\u9E2D\u793E\u533A", url: "https://eleduck.com/feed/latest.xml", dailyLimit: 4 }
+];
+function qualify(entries, spec) {
+  return dedupeDrafts(
     entries.map((entry) => {
       const draft = buildDraft({
         url: entry.url,
         title: entry.title,
         excerpt: entry.excerpt,
-        sourceId: options.sourceId,
-        sourceName: options.sourceName,
-        author: entry.author ?? options.authorFallback ?? null,
+        sourceId: spec.id,
+        sourceName: spec.name,
+        author: entry.author,
         publishedAt: entry.publishedAt
       });
-      if (!draft) return null;
-      if (options.topicOnly && !NOMAD_TOPIC.test(`${draft.title}
-${draft.excerpt}`)) return null;
-      return options.tag ? withTag(draft, options.tag) : draft;
-    }),
-    options.limit
-  );
+      return spec.tag && draft ? withTag(draft, spec.tag) : draft;
+    }).filter((item) => item !== null)
+  ).sort(byRank);
 }
-__name(fetchFeed, "fetchFeed");
-var SOURCES = [
-  {
-    id: "eleduck",
-    name: "\u7535\u9E2D\u793E\u533A",
-    hint: "https://eleduck.com/feed/latest.xml",
-    fetch: /* @__PURE__ */ __name(() => fetchFeed({
-      url: "https://eleduck.com/feed/latest.xml",
-      sourceId: "eleduck",
-      sourceName: "\u7535\u9E2D\u793E\u533A",
-      limit: 10
-    }), "fetch")
-  },
-  {
-    id: "looktheworld",
-    name: "Look the World",
-    hint: "https://www.looktheworld.com/changes.xml",
-    fetch: /* @__PURE__ */ __name(() => fetchFeed({
-      url: "https://www.looktheworld.com/changes.xml",
-      sourceId: "looktheworld",
-      sourceName: "Look the World",
-      limit: 8,
-      tag: "visa"
-    }), "fetch")
-  },
-  {
-    id: "jarodise",
-    name: "\u6570\u5B57\u6E38\u6C11\u90E8\u843D",
-    hint: "https://jarodise.com/rss.xml",
-    fetch: /* @__PURE__ */ __name(() => fetchFeed({
-      url: "https://jarodise.com/rss.xml",
-      sourceId: "jarodise",
-      sourceName: "\u6570\u5B57\u6E38\u6C11\u90E8\u843D",
-      limit: 8,
-      topicOnly: true
-    }), "fetch")
-  },
-  {
-    id: "turtlegirl",
-    name: "\u4E4C\u9F9F\u59B9\u51FA\u8D70\u65C5\u884C",
-    hint: "https://turtlegirltravel.com/category/digital-nomad/feed/",
-    fetch: /* @__PURE__ */ __name(() => fetchFeed({
-      url: "https://turtlegirltravel.com/category/digital-nomad/feed/",
-      sourceId: "turtlegirl",
-      sourceName: "\u4E4C\u9F9F\u59B9\u51FA\u8D70\u65C5\u884C",
-      limit: 6
-    }), "fetch")
-  },
-  {
-    id: "rososa",
-    name: "\u7231\u6C99\u5C3C\u4E9A\u7535\u5B50\u5C45\u6C11\u793E\u533A",
-    hint: "https://rososa.com/feed/",
-    fetch: /* @__PURE__ */ __name(() => fetchFeed({
-      url: "https://rososa.com/feed/",
-      sourceId: "rososa",
-      sourceName: "\u7231\u6C99\u5C3C\u4E9A\u7535\u5B50\u5C45\u6C11\u793E\u533A",
-      limit: 6
-    }), "fetch")
-  }
-];
+__name(qualify, "qualify");
+async function qualifyFeed(spec, limit) {
+  const entries = parseFeed(await fetchText(spec.url));
+  return qualify(entries, spec).slice(0, limit);
+}
+__name(qualifyFeed, "qualifyFeed");
+var SOURCES = FEEDS.map((spec) => ({
+  id: spec.id,
+  name: spec.name,
+  hint: spec.url,
+  fetch: /* @__PURE__ */ __name(() => qualifyFeed(spec, spec.dailyLimit), "fetch")
+}));
 function knownSource(id) {
   return SOURCES.find((source) => source.id === id);
 }
 __name(knownSource, "knownSource");
+
+// src/backfill.ts
+function pageExcerpt(html2) {
+  const head = html2.slice(0, 8e4);
+  const title = plainTitle(head.match(/<title>([^<]+)<\/title>/i)?.[1] ?? "");
+  const raw = head.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? head.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i)?.[1] ?? head.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? "";
+  return { title, excerpt: excerptOf(raw, title) };
+}
+__name(pageExcerpt, "pageExcerpt");
+async function draftFromSeed(seed) {
+  const html2 = await fetchText(seed.url, 12e3);
+  const page = pageExcerpt(html2);
+  const title = page.title || seed.title;
+  return buildDraft({
+    url: seed.url,
+    title,
+    excerpt: page.excerpt,
+    sourceId: seed.sourceId,
+    sourceName: seed.sourceName,
+    author: seed.author
+  });
+}
+__name(draftFromSeed, "draftFromSeed");
+async function insertClassics(env, items) {
+  if (!items.length) return { inserted: 0, skipped: 0 };
+  const collectedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const results = await env.DB.batch(
+    items.map(
+      (item) => env.DB.prepare(
+        `INSERT INTO items (
+          canonical_url, title, excerpt, source_id, source_name, author,
+          published_at, collected_at, popularity, popularity_label, tags,
+          language, discussion_url, topic, quality_score, section
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'classic')
+        ON CONFLICT(canonical_url) DO UPDATE SET
+          section = 'classic',
+          topic = excluded.topic,
+          quality_score = excluded.quality_score,
+          excerpt = CASE
+            WHEN length(excluded.excerpt) > length(items.excerpt) THEN excluded.excerpt
+            ELSE items.excerpt
+          END`
+      ).bind(
+        item.canonicalUrl,
+        item.title,
+        item.excerpt,
+        item.sourceId,
+        item.sourceName,
+        item.author,
+        item.publishedAt,
+        collectedAt,
+        item.popularity,
+        item.popularityLabel,
+        item.tags,
+        item.language,
+        item.discussionUrl,
+        item.topic,
+        item.qualityScore
+      )
+    )
+  );
+  const inserted = results.reduce((sum, result) => sum + (result.meta?.changes ?? 0), 0);
+  return { inserted, skipped: items.length - inserted };
+}
+__name(insertClassics, "insertClassics");
+async function runBackfill(env) {
+  const byTopic = Object.fromEntries(TOPICS.map((topic) => [topic.id, 0]));
+  const pool = [];
+  const seen = /* @__PURE__ */ new Set();
+  const feeds = [];
+  for (const spec of FEEDS) {
+    try {
+      const items = await qualifyFeed(spec, 80);
+      feeds.push({ id: spec.id, qualified: items.length, error: null });
+      for (const item of items) {
+        if (seen.has(item.canonicalUrl)) continue;
+        seen.add(item.canonicalUrl);
+        pool.push(item);
+      }
+    } catch (error) {
+      feeds.push({
+        id: spec.id,
+        qualified: 0,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+  let seedOk = 0;
+  let seedFailed = 0;
+  for (const seed of classics_default) {
+    try {
+      const draft = await draftFromSeed(seed);
+      if (!draft) {
+        seedFailed += 1;
+        continue;
+      }
+      seedOk += 1;
+      if (seen.has(draft.canonicalUrl)) continue;
+      seen.add(draft.canonicalUrl);
+      pool.push(draft);
+    } catch {
+      seedFailed += 1;
+    }
+  }
+  const saved = await insertClassics(env, pool);
+  for (const item of pool) byTopic[item.topic] = (byTopic[item.topic] ?? 0) + 1;
+  return {
+    ok: pool.length > 0,
+    inserted: saved.inserted,
+    skipped: saved.skipped,
+    byTopic,
+    seeds: { ok: seedOk, failed: seedFailed },
+    feeds
+  };
+}
+__name(runBackfill, "runBackfill");
 
 // src/collect.ts
 var RUN_LIMIT = 16;
 async function loadSource(source) {
   try {
     const items = dedupeDrafts(await source.fetch()).sort(byRank).slice(0, 12);
-    if (!items.length) throw new Error("no items");
     return { id: source.id, name: source.name, ok: true, error: null, items };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -603,8 +851,8 @@ async function runCollect(env, trigger) {
           `INSERT INTO items (
             canonical_url, title, excerpt, source_id, source_name, author,
             published_at, collected_at, popularity, popularity_label, tags,
-            language, discussion_url
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            language, discussion_url, topic, quality_score, section
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'daily')
           ON CONFLICT(canonical_url) DO NOTHING`
         ).bind(
           item.canonicalUrl,
@@ -619,7 +867,9 @@ async function runCollect(env, trigger) {
           item.popularityLabel,
           item.tags,
           item.language,
-          item.discussionUrl
+          item.discussionUrl,
+          item.topic,
+          item.qualityScore
         )
       )
     );
@@ -669,10 +919,28 @@ async function runCollect(env, trigger) {
   return report;
 }
 __name(runCollect, "runCollect");
-async function purgeNonChinese(db) {
-  const rows = await db.prepare("SELECT id, title FROM items").all();
+async function purgeItems(db, mode) {
+  const rows = await db.prepare("SELECT id, title, excerpt FROM items").all();
   const all = rows.results ?? [];
-  const ids = all.filter((row) => !isPredominantlyChinese(row.title)).map((row) => row.id);
+  const languageIds = [];
+  const qualityIds = [];
+  for (const row of all) {
+    const foreign = !isPredominantlyChinese(row.title);
+    const weak = !passesQuality(row.title, row.excerpt ?? "");
+    if ((mode === "all" || mode === "language") && foreign) languageIds.push(row.id);
+    else if ((mode === "all" || mode === "quality") && weak) qualityIds.push(row.id);
+  }
+  const deletedLanguage = await deleteIds(db, languageIds);
+  const deletedQuality = await deleteIds(db, qualityIds);
+  return {
+    scanned: all.length,
+    deleted: deletedLanguage + deletedQuality,
+    deletedLanguage,
+    deletedQuality
+  };
+}
+__name(purgeItems, "purgeItems");
+async function deleteIds(db, ids) {
   let deleted = 0;
   for (let index = 0; index < ids.length; index += 80) {
     const chunk = ids.slice(index, index + 80);
@@ -680,9 +948,9 @@ async function purgeNonChinese(db) {
     const result = await db.prepare(`DELETE FROM items WHERE id IN (${placeholders})`).bind(...chunk).run();
     deleted += result.meta?.changes ?? 0;
   }
-  return { scanned: all.length, deleted };
+  return deleted;
 }
-__name(purgeNonChinese, "purgeNonChinese");
+__name(deleteIds, "deleteIds");
 
 // src/queries.ts
 var PAGE_SIZE = 20;
@@ -702,8 +970,11 @@ function normalizePage(requested, total, pageSize = PAGE_SIZE) {
   return Math.min(Math.max(1, requested), pageCount(total, pageSize));
 }
 __name(normalizePage, "normalizePage");
+var ITEM_COLUMNS = `id, canonical_url, title, excerpt, source_id, source_name, author,
+  published_at, collected_at, popularity, popularity_label, tags, language, discussion_url,
+  topic, quality_score, section`;
 function whereClause(sourceId, tag) {
-  const parts = [];
+  const parts = ["section = 'daily'"];
   const binds = [];
   if (sourceId) {
     parts.push("source_id = ?");
@@ -729,8 +1000,7 @@ async function listItems(db, sourceId, tag, page) {
   const where = whereClause(sourceId, tag);
   const offset = (page - 1) * PAGE_SIZE;
   const rows = await db.prepare(
-    `SELECT id, canonical_url, title, excerpt, source_id, source_name, author,
-              published_at, collected_at, popularity, popularity_label, tags, language, discussion_url
+    `SELECT ${ITEM_COLUMNS}
        FROM items ${where.sql}
        ORDER BY collected_at DESC, popularity DESC, id DESC
        LIMIT ? OFFSET ?`
@@ -740,23 +1010,33 @@ async function listItems(db, sourceId, tag, page) {
 __name(listItems, "listItems");
 async function getItem(db, id) {
   return db.prepare(
-    `SELECT id, canonical_url, title, excerpt, source_id, source_name, author,
-              published_at, collected_at, popularity, popularity_label, tags, language, discussion_url
+    `SELECT ${ITEM_COLUMNS}
        FROM items WHERE id = ?`
   ).bind(id).first();
 }
 __name(getItem, "getItem");
 async function recentItems(db, limit = 30) {
   const rows = await db.prepare(
-    `SELECT id, canonical_url, title, excerpt, source_id, source_name, author,
-              published_at, collected_at, popularity, popularity_label, tags, language, discussion_url
+    `SELECT ${ITEM_COLUMNS}
        FROM items
+       WHERE section = 'daily'
        ORDER BY collected_at DESC, popularity DESC, id DESC
        LIMIT ?`
   ).bind(limit).all();
   return rows.results ?? [];
 }
 __name(recentItems, "recentItems");
+async function listClassics(db, topic) {
+  const rows = await db.prepare(
+    `SELECT ${ITEM_COLUMNS}
+       FROM items
+       WHERE section = 'classic' AND (? = '' OR topic = ?)
+       ORDER BY quality_score DESC, id DESC
+       LIMIT 24`
+  ).bind(topic, topic).all();
+  return rows.results ?? [];
+}
+__name(listClassics, "listClassics");
 
 // src/styles.ts
 var CSS = `
@@ -875,6 +1155,12 @@ select { border-radius: 999px; background: var(--paper-2); border-color: var(--l
 .source-form { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .source-form label { color: var(--muted); font-size: 0.92rem; }
 .count { color: var(--muted); font-size: 0.92rem; margin: 0; }
+.classic { margin: 0 0 2rem; }
+.classic h2, .daily-heading {
+  font-family: var(--serif);
+  font-size: 1.45rem;
+  margin: 0 0 0.4rem;
+}
 .day { margin: 0 0 1.6rem; }
 .day h2 {
   display: flex;
@@ -984,10 +1270,11 @@ code { font-size: 0.92em; }
 var FAVICON = "data:image/svg+xml," + encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#0c5f57"/><path d="M16 5.5 19.2 14.6 16 26.5 12.8 14.6Z" fill="#f4efe4"/><circle cx="16" cy="16" r="1.7" fill="#8d2e28"/></svg>`
 );
-function pageHref(page, source, tag) {
+function pageHref(page, source, tag, topic = "") {
   const params = new URLSearchParams();
   if (source) params.set("source", source);
   if (tag) params.set("tag", tag);
+  if (topic) params.set("topic", topic);
   if (page > 1) params.set("page", String(page));
   const query = params.toString();
   return query ? `/?${query}` : "/";
@@ -1063,11 +1350,37 @@ function layout(options) {
 </html>`;
 }
 __name(layout, "layout");
+function classicsBlock(view) {
+  const tabs = [
+    `<a class="tag${view.topic ? "" : " on"}" href="${esc(pageHref(1, view.source, view.tag, ""))}">\u5168\u90E8\u7CBE\u9009</a>`,
+    ...TOPICS.map(
+      (topic) => `<a class="tag${view.topic === topic.id ? " on" : ""}" href="${esc(pageHref(1, view.source, view.tag, topic.id))}">${esc(topic.label)}</a>`
+    )
+  ].join("");
+  const cards = view.classics.map(
+    (item, index) => `<article class="item">
+      <div class="index">${String(index + 1).padStart(2, "0")}</div>
+      <div>
+        <h3><a href="/item/${item.id}">${esc(item.title)}</a></h3>
+        ${item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
+        <p class="attr">${attribution(item)}</p>
+        <p class="submeta">${esc([TOPICS.find((topic) => topic.id === item.topic)?.label, item.quality_score ? `${item.quality_score} \u5206` : ""].filter(Boolean).join(" \xB7 "))}</p>
+      </div>
+    </article>`
+  ).join("");
+  return `<section class="classic">
+    <h2>\u7ECF\u5178\u6559\u7A0B</h2>
+    <p class="count">\u7CBE\u9009\u8FC7\u7684\u957F\u6307\u5357\uFF0C\u548C\u4E0B\u9762\u7684\u6BCF\u65E5\u6536\u5F55\u5206\u5F00\u3002</p>
+    <div class="tag-row" aria-label="\u7ECF\u5178\u4E3B\u9898">${tabs}</div>
+    ${cards || `<p class="empty">\u8FD9\u4E2A\u4E3B\u9898\u4E0B\u8FD8\u6CA1\u6709\u7ECF\u5178\u6559\u7A0B\u3002</p>`}
+  </section>`;
+}
+__name(classicsBlock, "classicsBlock");
 function filters(view) {
   const tags = [
-    `<a class="tag${view.tag ? "" : " on"}" href="${esc(pageHref(1, view.source, ""))}">\u5168\u90E8</a>`,
+    `<a class="tag${view.tag ? "" : " on"}" href="${esc(pageHref(1, view.source, "", view.topic))}">\u5168\u90E8</a>`,
     ...TAGS.map(
-      (tag) => `<a class="tag${view.tag === tag.id ? " on" : ""}" href="${esc(pageHref(1, view.source, tag.id))}">${esc(tag.label)}</a>`
+      (tag) => `<a class="tag${view.tag === tag.id ? " on" : ""}" href="${esc(pageHref(1, view.source, tag.id, view.topic))}">${esc(tag.label)}</a>`
     )
   ].join("");
   const options = [
@@ -1081,6 +1394,7 @@ function filters(view) {
     <div class="source-form">
       <label>\u6765\u6E90 <select name="source">${options}</select></label>
       ${view.tag ? `<input type="hidden" name="tag" value="${esc(view.tag)}">` : ""}
+      ${view.topic ? `<input type="hidden" name="topic" value="${esc(view.topic)}">` : ""}
       <button type="submit">\u7B5B\u9009</button>
     </div>
   </form>`;
@@ -1132,16 +1446,18 @@ function renderHome(view, origin) {
       return `<section class="day"><h2>\u6536\u5F55\u4E8E ${esc(group.label)}<span>${group.items.length} \u7BC7</span></h2>${cards}</section>`;
     }).join("");
   }
-  const prev = view.page > 1 ? `<a href="${esc(pageHref(view.page - 1, view.source, view.tag))}">\u4E0A\u4E00\u9875</a>` : `<span>\u4E0A\u4E00\u9875</span>`;
-  const next = view.page < pages ? `<a href="${esc(pageHref(view.page + 1, view.source, view.tag))}">\u4E0B\u4E00\u9875</a>` : `<span>\u4E0B\u4E00\u9875</span>`;
-  const body = `${filters(view)}
+  const prev = view.page > 1 ? `<a href="${esc(pageHref(view.page - 1, view.source, view.tag, view.topic))}">\u4E0A\u4E00\u9875</a>` : `<span>\u4E0A\u4E00\u9875</span>`;
+  const next = view.page < pages ? `<a href="${esc(pageHref(view.page + 1, view.source, view.tag, view.topic))}">\u4E0B\u4E00\u9875</a>` : `<span>\u4E0B\u4E00\u9875</span>`;
+  const body = `${classicsBlock(view)}
+    <h2 class="daily-heading">\u6700\u65B0\u6536\u5F55</h2>
+    ${filters(view)}
     <p class="count">\u5171 ${view.total} \u7BC7${filterBits ? ` \xB7 ${esc(filterBits)}` : ""} \xB7 \u7B2C ${view.page} / ${pages} \u9875 \xB7 ${esc(shanghaiLabel(view.generatedAt, false))}</p>
     ${list}
     ${view.total > PAGE_SIZE ? `<nav class="pager" aria-label="\u5206\u9875">${prev}<span>\u7B2C ${view.page} / ${pages} \u9875</span>${next}</nav>` : ""}`;
   return layout({
     title: "\u6700\u65B0",
     description: "\u6570\u5B57\u6E38\u6C11\u3001\u8FDC\u7A0B\u5DE5\u4F5C\u3001\u7B7E\u8BC1\u4E0E\u65C5\u5C45\u7684\u6BCF\u65E5\u9009\u8BFB\u3002\u53EA\u6536\u5F55\u6807\u9898\u3001\u77ED\u6458\u8981\u548C\u539F\u6587\u94FE\u63A5\u3002",
-    path: pageHref(view.page, view.source, view.tag),
+    path: pageHref(view.page, view.source, view.tag, view.topic),
     body,
     origin
   });
@@ -1183,7 +1499,7 @@ function renderAbout(origin) {
     <h1>\u5173\u4E8E\u6E38\u7267\u624B\u8BB0</h1>
     <p>\u8FD9\u662F\u7ED9\u4E2D\u6587\u8BFB\u8005\u7684\u4E00\u4EFD\u6570\u5B57\u6E38\u6C11\u65E5\u66F4\u3002\u5B83\u4E0D\u751F\u4EA7\u539F\u521B\u957F\u6587\uFF0C\u53EA\u6536\u5F55\u6807\u9898\u4EE5\u4E2D\u6587\u4E3A\u4E3B\u7684\u516C\u5F00\u5185\u5BB9\uFF0C\u7559\u4E0B\u6807\u9898\u3001\u77ED\u6458\u8981\u548C\u51FA\u5904\u3002</p>
     <h2>\u6BCF\u5929\u600E\u4E48\u66F4\u65B0</h2>
-    <p>\u540C\u4E00\u4E2A Cloudflare Worker \u5728\u5317\u4EAC\u65F6\u95F4 08:00 \u548C 22:00 \u5404\u8DD1\u4E00\u6B21\u91C7\u96C6\u3002\u4E24\u6B21\u90FD\u5199\u8FDB\u5F53\u5929\u7684\u5206\u7EC4\uFF0C\u6BCF\u6B21\u6700\u591A\u65B0\u589E\u5927\u7EA6 16 \u6761\uFF0C\u5DF2\u7ECF\u6536\u5F55\u8FC7\u7684\u94FE\u63A5\u4F1A\u8DF3\u8FC7\u3002\u6BCF\u4E2A\u6765\u6E90\u5355\u72EC\u8BF7\u6C42\u3001\u5355\u72EC\u8D85\u65F6\uFF1B\u67D0\u4E00\u4E2A\u6253\u4E0D\u5F00\uFF0C\u4E0D\u4F1A\u8BA9\u6574\u8F6E\u505C\u6389\u3002</p>
+    <p>\u540C\u4E00\u4E2A Cloudflare Worker \u5728\u5317\u4EAC\u65F6\u95F4 08:00 \u548C 22:00 \u5404\u8DD1\u4E00\u6B21\u91C7\u96C6\u3002\u4E24\u6B21\u90FD\u5199\u8FDB\u5F53\u5929\u7684\u5206\u7EC4\u3002\u6BCF\u6761\u90FD\u8981\u5148\u5BF9\u4E0A\u6D77\u5916\u5F00\u5361\u3001\u624B\u673A\u5361\u3001\u7A0E\u53F7\u3001AI \u8BA2\u9605\u3001\u7B7E\u8BC1\u3001\u8FDC\u7A0B\u65B9\u6CD5\u6216\u5238\u5546\uFF0C\u5E76\u4E14\u5206\u6570\u591F\u9AD8\uFF1B\u62DB\u8058\u548C\u95F2\u804A\u4E0D\u4F1A\u8FDB\u6765\u3002\u6BCF\u6B21\u6700\u591A\u65B0\u589E 16 \u6761\u3002</p>
     <h2>\u9875\u9762\u4E0A\u6709\u4EC0\u4E48</h2>
     <ul>
       <li>\u9996\u9875\u6309\u6536\u5F55\u65E5\u5206\u7EC4\uFF0C\u53EF\u4EE5\u6309\u6765\u6E90\u548C\u4E3B\u9898\u7B5B\u9009\uFF0C\u4E5F\u53EF\u4EE5\u7FFB\u9875\u3002</li>
@@ -1310,7 +1626,7 @@ async function handle(request, env) {
   const url = new URL(request.url);
   const origin = originOf(request);
   try {
-    if (url.pathname === "/admin/collect" || url.pathname === "/admin/purge-non-chinese") {
+    if (url.pathname.startsWith("/admin/")) {
       if (request.method !== "POST") {
         return json({ error: "method not allowed" }, 405);
       }
@@ -1318,11 +1634,18 @@ async function handle(request, env) {
         return json({ error: "unauthorized" }, 401);
       }
       if (url.pathname === "/admin/purge-non-chinese") {
-        const result = await purgeNonChinese(env.DB);
-        return json({ ok: true, ...result });
+        return json({ ok: true, ...await purgeItems(env.DB, "all") });
       }
-      const report = await runCollect(env, "manual");
-      return json(report, 200);
+      if (url.pathname === "/admin/purge-low-quality") {
+        return json({ ok: true, ...await purgeItems(env.DB, "quality") });
+      }
+      if (url.pathname === "/admin/backfill") {
+        return json(await runBackfill(env));
+      }
+      if (url.pathname === "/admin/collect") {
+        return json(await runCollect(env, "manual"), 200);
+      }
+      return json({ error: "not found" }, 404);
     }
     if (request.method !== "GET" && request.method !== "HEAD") {
       return json({ error: "method not allowed" }, 405);
@@ -1351,6 +1674,7 @@ async function handle(request, env) {
     if (url.pathname === "/") {
       const source = knownSource(url.searchParams.get("source") ?? "")?.id ?? "";
       const tag = knownTag(url.searchParams.get("tag") ?? "")?.id ?? "";
+      const topic = topicById(url.searchParams.get("topic") ?? "")?.id ?? "";
       const requested = parsePage(url.searchParams.get("page"));
       const total = await countItems(env.DB, source, tag);
       const page = normalizePage(requested, total, PAGE_SIZE);
@@ -1358,14 +1682,16 @@ async function handle(request, env) {
         const params = new URLSearchParams();
         if (source) params.set("source", source);
         if (tag) params.set("tag", tag);
+        if (topic) params.set("topic", topic);
         if (page > 1) params.set("page", String(page));
         const query = params.toString();
         return redirect(query ? `/?${query}` : "/");
       }
       const items = await listItems(env.DB, source, tag, page);
+      const classics = await listClassics(env.DB, topic);
       return html(
         renderHome(
-          { items, total, page, source, tag, generatedAt: (/* @__PURE__ */ new Date()).toISOString() },
+          { items, classics, total, page, source, tag, topic, generatedAt: (/* @__PURE__ */ new Date()).toISOString() },
           origin
         )
       );

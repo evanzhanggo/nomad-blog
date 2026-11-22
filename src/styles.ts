@@ -114,6 +114,12 @@ select { border-radius: 999px; background: var(--paper-2); border-color: var(--l
 .source-form { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .source-form label { color: var(--muted); font-size: 0.92rem; }
 .count { color: var(--muted); font-size: 0.92rem; margin: 0; }
+.classic { margin: 0 0 2rem; }
+.classic h2, .daily-heading {
+  font-family: var(--serif);
+  font-size: 1.45rem;
+  margin: 0 0 0.4rem;
+}
 .day { margin: 0 0 1.6rem; }
 .day h2 {
   display: flex;

@@ -1,5 +1,7 @@
-import { purgeNonChinese, runCollect } from "./collect";
-import { countItems, getItem, listItems, normalizePage, PAGE_SIZE, parsePage, recentItems } from "./queries";
+import { runBackfill } from "./backfill";
+import { purgeItems, runCollect } from "./collect";
+import { countItems, getItem, listClassics, listItems, normalizePage, PAGE_SIZE, parsePage, recentItems } from "./queries";
+import { topicById } from "./score";
 import {
   renderAbout,
   renderError,
@@ -63,7 +65,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const origin = originOf(request);
   try {
-    if (url.pathname === "/admin/collect" || url.pathname === "/admin/purge-non-chinese") {
+    if (url.pathname.startsWith("/admin/")) {
       if (request.method !== "POST") {
         return json({ error: "method not allowed" }, 405);
       }
@@ -71,11 +73,18 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         return json({ error: "unauthorized" }, 401);
       }
       if (url.pathname === "/admin/purge-non-chinese") {
-        const result = await purgeNonChinese(env.DB);
-        return json({ ok: true, ...result });
+        return json({ ok: true, ...(await purgeItems(env.DB, "all")) });
       }
-      const report = await runCollect(env, "manual");
-      return json(report, 200);
+      if (url.pathname === "/admin/purge-low-quality") {
+        return json({ ok: true, ...(await purgeItems(env.DB, "quality")) });
+      }
+      if (url.pathname === "/admin/backfill") {
+        return json(await runBackfill(env));
+      }
+      if (url.pathname === "/admin/collect") {
+        return json(await runCollect(env, "manual"), 200);
+      }
+      return json({ error: "not found" }, 404);
     }
 
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -108,6 +117,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     if (url.pathname === "/") {
       const source = knownSource(url.searchParams.get("source") ?? "")?.id ?? "";
       const tag = knownTag(url.searchParams.get("tag") ?? "")?.id ?? "";
+      const topic = topicById(url.searchParams.get("topic") ?? "")?.id ?? "";
       const requested = parsePage(url.searchParams.get("page"));
       const total = await countItems(env.DB, source, tag);
       const page = normalizePage(requested, total, PAGE_SIZE);
@@ -115,14 +125,16 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         const params = new URLSearchParams();
         if (source) params.set("source", source);
         if (tag) params.set("tag", tag);
+        if (topic) params.set("topic", topic);
         if (page > 1) params.set("page", String(page));
         const query = params.toString();
         return redirect(query ? `/?${query}` : "/");
       }
       const items = await listItems(env.DB, source, tag, page);
+      const classics = await listClassics(env.DB, topic);
       return html(
         renderHome(
-          { items, total, page, source, tag, generatedAt: new Date().toISOString() },
+          { items, classics, total, page, source, tag, topic, generatedAt: new Date().toISOString() },
           origin,
         ),
       );

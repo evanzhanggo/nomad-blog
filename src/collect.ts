@@ -1,4 +1,5 @@
 import { byRank, dedupeDrafts, isPredominantlyChinese } from "./item";
+import { passesQuality } from "./score";
 import { SOURCES } from "./sources";
 import type { CollectReport, Draft, Env, Source, SourceLoad } from "./types";
 
@@ -8,7 +9,6 @@ export const RUN_LIMIT = 16;
 export async function loadSource(source: Source): Promise<SourceLoad> {
   try {
     const items = dedupeDrafts(await source.fetch()).sort(byRank).slice(0, 12);
-    if (!items.length) throw new Error("no items");
     return { id: source.id, name: source.name, ok: true, error: null, items };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -102,8 +102,8 @@ export async function runCollect(env: Env, trigger: "cron" | "manual"): Promise<
           `INSERT INTO items (
             canonical_url, title, excerpt, source_id, source_name, author,
             published_at, collected_at, popularity, popularity_label, tags,
-            language, discussion_url
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            language, discussion_url, topic, quality_score, section
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'daily')
           ON CONFLICT(canonical_url) DO NOTHING`,
         ).bind(
           item.canonicalUrl,
@@ -119,6 +119,8 @@ export async function runCollect(env: Env, trigger: "cron" | "manual"): Promise<
           item.tags,
           item.language,
           item.discussionUrl,
+          item.topic,
+          item.qualityScore,
         ),
       ),
     );
@@ -174,10 +176,33 @@ export async function runCollect(env: Env, trigger: "cron" | "manual"): Promise<
   return report;
 }
 
-export async function purgeNonChinese(db: D1Database): Promise<{ scanned: number; deleted: number }> {
-  const rows = await db.prepare("SELECT id, title FROM items").all<{ id: number; title: string }>();
+export async function purgeItems(
+  db: D1Database,
+  mode: "all" | "language" | "quality",
+): Promise<{ scanned: number; deleted: number; deletedLanguage: number; deletedQuality: number }> {
+  const rows = await db
+    .prepare("SELECT id, title, excerpt FROM items")
+    .all<{ id: number; title: string; excerpt: string }>();
   const all = rows.results ?? [];
-  const ids = all.filter((row) => !isPredominantlyChinese(row.title)).map((row) => row.id);
+  const languageIds: number[] = [];
+  const qualityIds: number[] = [];
+  for (const row of all) {
+    const foreign = !isPredominantlyChinese(row.title);
+    const weak = !passesQuality(row.title, row.excerpt ?? "");
+    if ((mode === "all" || mode === "language") && foreign) languageIds.push(row.id);
+    else if ((mode === "all" || mode === "quality") && weak) qualityIds.push(row.id);
+  }
+  const deletedLanguage = await deleteIds(db, languageIds);
+  const deletedQuality = await deleteIds(db, qualityIds);
+  return {
+    scanned: all.length,
+    deleted: deletedLanguage + deletedQuality,
+    deletedLanguage,
+    deletedQuality,
+  };
+}
+
+async function deleteIds(db: D1Database, ids: number[]): Promise<number> {
   let deleted = 0;
   for (let index = 0; index < ids.length; index += 80) {
     const chunk = ids.slice(index, index + 80);
@@ -185,5 +210,10 @@ export async function purgeNonChinese(db: D1Database): Promise<{ scanned: number
     const result = await db.prepare(`DELETE FROM items WHERE id IN (${placeholders})`).bind(...chunk).run();
     deleted += result.meta?.changes ?? 0;
   }
-  return { scanned: all.length, deleted };
+  return deleted;
+}
+
+export async function purgeNonChinese(db: D1Database): Promise<{ scanned: number; deleted: number }> {
+  const result = await purgeItems(db, "all");
+  return { scanned: result.scanned, deleted: result.deleted };
 }

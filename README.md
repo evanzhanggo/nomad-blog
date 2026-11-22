@@ -24,7 +24,7 @@ D1（绑定名 DB）
 - Worker 名称：`nomad-blog`。
 - 唯一密钥：`ADMIN_TOKEN`。用 `wrangler secret put ADMIN_TOKEN` 写入，不要放进仓库。`wrangler.toml` 里的 `database_id` 是占位符 `00000000-0000-0000-0000-000000000000`，部署前换成 `wrangler d1 create` 返回的 id。
 
-采集器对每个来源单独 `fetch`、单独超时（大约 12 秒）、单独捕获错误。一个来源失败只会记在当轮报告里。只留下标题以中文为主的条目（至少 4 个汉字，并且汉字不少于汉字与英文字母合计的 45%）。同一篇原文只保留一次。每次运行按新鲜程度最多写入 16 条新内容，所以一天两次最多大约 32 条；第二次不会把第一次已经写入的链接再写一遍。首页按北京时间的收录日分组，同一天的两次结果在同一组里。
+采集器对每个来源单独 `fetch`、单独超时（大约 12 秒）、单独捕获错误。一个来源失败只会记在当轮报告里。只留下标题以中文为主的条目（至少 8 个汉字，并且汉字不少于汉字与英文字母合计的 35%）。同一篇原文只保留一次。每次运行按新鲜程度最多写入 16 条新内容，所以一天两次最多大约 32 条；第二次不会把第一次已经写入的链接再写一遍。首页按北京时间的收录日分组，同一天的两次结果在同一组里。
 
 `compatibility_date` 是 `2026-01-15`。没有 `compatibility_flags`，也不需要 `nodejs_compat`。除了密钥 `ADMIN_TOKEN`，Worker 只读 D1 绑定 `DB`。
 
@@ -80,14 +80,28 @@ curl -X POST https://nomad.evanzhang.cloud/admin/collect \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
-清掉已经入库、但标题不是中文为主的旧条目：
+清掉非中文，以及现在达不到质量线的旧条目：
 
 ```bash
 curl -X POST https://nomad.evanzhang.cloud/admin/purge-non-chinese \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
-返回 `{"ok":true,"scanned":123,"deleted":40}`。判断标准和采集时一样。没带正确的 `Authorization: Bearer <ADMIN_TOKEN>` 会返回 401。没配置 `ADMIN_TOKEN` 时，这两个接口一律拒绝。
+只按质量线清，保留非中文判断之外的规则：
+
+```bash
+curl -X POST https://nomad.evanzhang.cloud/admin/purge-low-quality \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+把订阅源和 `data/classics.json` 里核实过的经典指南标成「经典教程」：
+
+```bash
+curl -X POST https://nomad.evanzhang.cloud/admin/backfill \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+这三个接口和 `/admin/collect` 一样，没带正确的 `Authorization: Bearer <ADMIN_TOKEN>` 会返回 401。没配置 `ADMIN_TOKEN` 时一律拒绝。
 
 ## 页面
 
@@ -105,11 +119,16 @@ curl -X POST https://nomad.evanzhang.cloud/admin/purge-non-chinese \
 
 | id | 名称 | 地址 |
 | --- | --- | --- |
-| `eleduck` | 电鸭社区 | `https://eleduck.com/feed/latest.xml` |
-| `looktheworld` | Look the World | `https://www.looktheworld.com/changes.xml` |
-| `jarodise` | 数字游民部落 | `https://jarodise.com/rss.xml`（标题或摘要要碰到游民、远程、签证、旅居、海外这些词） |
+| `kannetflix` | 看奈飞 | `https://kannetflix.com/index.xml` |
+| `ttshuoka` | TT说卡 | `https://www.ttshuoka.com/blog/rss.xml` |
+| `jarodise` | 数字游民部落 | `https://jarodise.com/rss.xml` |
 | `turtlegirl` | 乌龟妹出走旅行 | `https://turtlegirltravel.com/category/digital-nomad/feed/` |
+| `looktheworld` | Look the World | `https://www.looktheworld.com/changes.xml` |
 | `rososa` | 爱沙尼亚电子居民社区 | `https://rososa.com/feed/` |
+| `sspai` | 少数派 | `https://sspai.com/feed`（只留下跨过质量线的） |
+| `eleduck` | 电鸭社区 | `https://eleduck.com/feed/latest.xml`（招聘和闲聊会被丢掉） |
+
+质量分写在 `src/score.ts`。先丢掉招聘、内推、派单、美工。然后按主题词（海外开卡、手机卡、税号、AI 订阅、签证、远程方法、券商）打分，加上指南/教程、摘要长度和热度。低于 40 分不入库。首页「经典教程」只显示回填的高分文章，按主题分页签；「最新收录」仍是每日两次的新条目。
 
 请求都带 `User-Agent: NomadBlogBot/1.0 (+https://nomad.evanzhang.cloud; excerpts-only; attribution)`。
 

@@ -22,6 +22,9 @@ function row(overrides: Partial<ItemRow> = {}): ItemRow {
     tags: "|visa|howto|",
     language: "zh",
     discussion_url: null,
+    topic: "visa",
+    quality_score: 60,
+    section: "daily",
     ...overrides,
   };
 }
@@ -30,11 +33,13 @@ describe("pages", () => {
   it("renders the home list with attribution, a day group, and escaped titles", () => {
     const html = renderHome(
       {
-        items: [row(), row({ id: 8, title: "Second", source_name: "dev.to", canonical_url: "https://dev.to/a" })],
+        items: [row(), row({ id: 8, title: "第二篇签证记录", source_name: "看奈飞", canonical_url: "https://kannetflix.com/pay/itin/" })],
+        classics: [row({ id: 3, title: "港卡开户指南", section: "classic", topic: "bank", quality_score: 72 })],
         total: 21,
         page: 1,
         source: "",
         tag: "visa",
+        topic: "",
         generatedAt: "2026-11-22T04:00:00.000Z",
       },
       origin,
@@ -43,6 +48,8 @@ describe("pages", () => {
     expect(html).not.toContain("class=\"rule\"");
     expect(html).not.toContain("linear-gradient(90deg, var(--teal), var(--stamp))");
     expect(html).toContain("收录于");
+    expect(html).toContain("经典教程");
+    expect(html).toContain("港卡开户指南");
     expect(html).toContain("来源：<strong>Nomad Gate</strong> · 作者：<strong>未知</strong> · <a href=\"https://nomadgate.com/portugal-visa\"");
     expect(html).toContain(">原文链接</a>");
     expect(html).toContain("著作权归原作者所有");

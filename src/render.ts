@@ -1,6 +1,7 @@
 import { PAGE_SIZE, pageCount } from "./queries";
 import { SOURCES } from "./sources";
 import { CSS } from "./styles";
+import { TOPICS } from "./score";
 import { knownTag, parseTags, TAGS } from "./tags";
 import { esc, rfc822, safeHref, shanghaiDayKey, shanghaiLabel, xmlEsc } from "./text";
 import type { ItemRow } from "./types";
@@ -13,17 +14,20 @@ const FAVICON =
 
 export interface HomeView {
   items: ItemRow[];
+  classics: ItemRow[];
   total: number;
   page: number;
   source: string;
   tag: string;
+  topic: string;
   generatedAt: string;
 }
 
-function pageHref(page: number, source: string, tag: string): string {
+function pageHref(page: number, source: string, tag: string, topic = ""): string {
   const params = new URLSearchParams();
   if (source) params.set("source", source);
   if (tag) params.set("tag", tag);
+  if (topic) params.set("topic", topic);
   if (page > 1) params.set("page", String(page));
   const query = params.toString();
   return query ? `/?${query}` : "/";
@@ -108,12 +112,41 @@ function layout(options: {
 </html>`;
 }
 
+function classicsBlock(view: HomeView): string {
+  const tabs = [
+    `<a class="tag${view.topic ? "" : " on"}" href="${esc(pageHref(1, view.source, view.tag, ""))}">全部精选</a>`,
+    ...TOPICS.map(
+      (topic) =>
+        `<a class="tag${view.topic === topic.id ? " on" : ""}" href="${esc(pageHref(1, view.source, view.tag, topic.id))}">${esc(topic.label)}</a>`,
+    ),
+  ].join("");
+  const cards = view.classics
+    .map(
+      (item, index) => `<article class="item">
+      <div class="index">${String(index + 1).padStart(2, "0")}</div>
+      <div>
+        <h3><a href="/item/${item.id}">${esc(item.title)}</a></h3>
+        ${item.excerpt ? `<p class="excerpt">${esc(item.excerpt)}</p>` : ""}
+        <p class="attr">${attribution(item)}</p>
+        <p class="submeta">${esc([TOPICS.find((topic) => topic.id === item.topic)?.label, item.quality_score ? `${item.quality_score} 分` : ""].filter(Boolean).join(" · "))}</p>
+      </div>
+    </article>`,
+    )
+    .join("");
+  return `<section class="classic">
+    <h2>经典教程</h2>
+    <p class="count">精选过的长指南，和下面的每日收录分开。</p>
+    <div class="tag-row" aria-label="经典主题">${tabs}</div>
+    ${cards || `<p class="empty">这个主题下还没有经典教程。</p>`}
+  </section>`;
+}
+
 function filters(view: HomeView): string {
   const tags = [
-    `<a class="tag${view.tag ? "" : " on"}" href="${esc(pageHref(1, view.source, ""))}">全部</a>`,
+    `<a class="tag${view.tag ? "" : " on"}" href="${esc(pageHref(1, view.source, "", view.topic))}">全部</a>`,
     ...TAGS.map(
       (tag) =>
-        `<a class="tag${view.tag === tag.id ? " on" : ""}" href="${esc(pageHref(1, view.source, tag.id))}">${esc(tag.label)}</a>`,
+        `<a class="tag${view.tag === tag.id ? " on" : ""}" href="${esc(pageHref(1, view.source, tag.id, view.topic))}">${esc(tag.label)}</a>`,
     ),
   ].join("");
   const options = [
@@ -128,6 +161,7 @@ function filters(view: HomeView): string {
     <div class="source-form">
       <label>来源 <select name="source">${options}</select></label>
       ${view.tag ? `<input type="hidden" name="tag" value="${esc(view.tag)}">` : ""}
+      ${view.topic ? `<input type="hidden" name="topic" value="${esc(view.topic)}">` : ""}
       <button type="submit">筛选</button>
     </div>
   </form>`;
@@ -187,22 +221,24 @@ export function renderHome(view: HomeView, origin: string): string {
       })
       .join("");
   }
-  const prev =
+    const prev =
     view.page > 1
-      ? `<a href="${esc(pageHref(view.page - 1, view.source, view.tag))}">上一页</a>`
+      ? `<a href="${esc(pageHref(view.page - 1, view.source, view.tag, view.topic))}">上一页</a>`
       : `<span>上一页</span>`;
   const next =
     view.page < pages
-      ? `<a href="${esc(pageHref(view.page + 1, view.source, view.tag))}">下一页</a>`
+      ? `<a href="${esc(pageHref(view.page + 1, view.source, view.tag, view.topic))}">下一页</a>`
       : `<span>下一页</span>`;
-  const body = `${filters(view)}
+  const body = `${classicsBlock(view)}
+    <h2 class="daily-heading">最新收录</h2>
+    ${filters(view)}
     <p class="count">共 ${view.total} 篇${filterBits ? ` · ${esc(filterBits)}` : ""} · 第 ${view.page} / ${pages} 页 · ${esc(shanghaiLabel(view.generatedAt, false))}</p>
     ${list}
     ${view.total > PAGE_SIZE ? `<nav class="pager" aria-label="分页">${prev}<span>第 ${view.page} / ${pages} 页</span>${next}</nav>` : ""}`;
   return layout({
     title: "最新",
     description: "数字游民、远程工作、签证与旅居的每日选读。只收录标题、短摘要和原文链接。",
-    path: pageHref(view.page, view.source, view.tag),
+    path: pageHref(view.page, view.source, view.tag, view.topic),
     body,
     origin,
   });
@@ -247,7 +283,7 @@ export function renderAbout(origin: string): string {
     <h1>关于游牧手记</h1>
     <p>这是给中文读者的一份数字游民日更。它不生产原创长文，只收录标题以中文为主的公开内容，留下标题、短摘要和出处。</p>
     <h2>每天怎么更新</h2>
-    <p>同一个 Cloudflare Worker 在北京时间 08:00 和 22:00 各跑一次采集。两次都写进当天的分组，每次最多新增大约 16 条，已经收录过的链接会跳过。每个来源单独请求、单独超时；某一个打不开，不会让整轮停掉。</p>
+    <p>同一个 Cloudflare Worker 在北京时间 08:00 和 22:00 各跑一次采集。两次都写进当天的分组。每条都要先对上海外开卡、手机卡、税号、AI 订阅、签证、远程方法或券商，并且分数够高；招聘和闲聊不会进来。每次最多新增 16 条。</p>
     <h2>页面上有什么</h2>
     <ul>
       <li>首页按收录日分组，可以按来源和主题筛选，也可以翻页。</li>
