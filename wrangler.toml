@@ -1,0 +1,20 @@
+# 游牧手记 — 单 Worker + D1 + 每天两次 Cron。
+# database_id 是占位符，不是真实库。部署前执行 `wrangler d1 create nomad-blog`，
+# 把返回的 id 写到下面。密钥只走 `wrangler secret put`，不要写进仓库。
+name = "nomad-blog"
+main = "src/index.ts"
+compatibility_date = "2026-01-15"
+
+# 北京时间 08:00 与 22:00（UTC 00:00 与 14:00）。两次都会跑同一套采集。
+[triggers]
+crons = ["0 0 * * *", "0 14 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nomad-blog"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[routes]]
+pattern = "nomad.evanzhang.cloud"
+custom_domain = true
